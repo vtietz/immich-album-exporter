@@ -141,7 +141,7 @@ The test wrapper downloads the current official Immich Docker Compose stack into
 
 ## GitHub Container Build
 
-This repository includes a GitHub Actions workflow to build and publish a container image to GitHub Container Registry.
+This repository includes a GitHub Actions workflow that runs the Docker-based unit and end-to-end tests on pushes and pull requests. On successful pushes to `main` or version tags, it also publishes a container image package to GitHub Container Registry.
 
 ## Limits and Follow-Ups
 

@@ -1,0 +1,28 @@
+immich:
+  base_url: ${IMMICH_BASE_URL:http://immich-server:2283/api}
+  api_key: ${IMMICH_API_KEY:}
+  access_token: ${IMMICH_ACCESS_TOKEN:}
+  request_timeout_seconds: 60
+
+selection:
+  mode: owned_or_shared
+  user_id: ${IMMICH_SELECTION_USER_ID:}
+  include_album_ids: []
+  exclude_album_ids: []
+
+poll:
+  interval_seconds: 600
+
+paths:
+  target_root: /target
+  state_db_path: /data/importer.db
+
+templates:
+  folder: "{{ album_date.strftime('%Y') }}/{{ album_date.strftime('%Y-%m-%d') }} {{ album_display_title }}"
+  filename: "{{ asset_date.strftime('%Y%m%d_%H%M%S') }}{{ collision_suffix }}{{ ext }}"
+
+behavior:
+  collision_policy: append
+  freeze_album_directory: true
+  preserve_file_timestamps: true
+  dry_run: false

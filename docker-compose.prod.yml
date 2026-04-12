@@ -1,0 +1,4 @@
+services:
+  immich-album-exporter:
+    build: null
+    image: ${IMMICH_ALBUM_EXPORTER_IMAGE:-ghcr.io/example/immich-album-exporter:latest}

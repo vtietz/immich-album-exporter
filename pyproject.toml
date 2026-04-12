@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "immich-album-exporter"
+version = "0.1.0"
+description = "Dockerized importer that mirrors Immich albums into a templated local folder structure."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+  { name = "GitHub Copilot" }
+]
+dependencies = [
+  "httpx>=0.27.0",
+  "Jinja2>=3.1.5",
+  "PyYAML>=6.0.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "Pillow>=11.2.1",
+  "pytest>=8.3.5",
+  "pytest-httpx>=0.35.0",
+]
+
+[project.scripts]
+immich-album-exporter = "immich_album_exporter.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/immich_album_exporter"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

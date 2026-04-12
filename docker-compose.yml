@@ -1,0 +1,33 @@
+services:
+  immich-album-exporter:
+    build:
+      context: .
+      target: runtime
+    image: immich-album-exporter:local
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+    command: ["worker", "--config", "/config/config.yml"]
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+      - ./target:/target
+
+  immich-album-exporter-dev:
+    build:
+      context: .
+      target: dev
+    image: immich-album-exporter:dev
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      TZ: ${TZ:-UTC}
+      PYTHONPATH: /workspace/src
+    working_dir: /workspace
+    entrypoint: ["bash", "-lc"]
+    command: ["python -m immich_album_exporter sync-once --config /config/config.yml"]
+    volumes:
+      - ./:/workspace
+      - ./config:/config
+      - ./data:/data
+      - ./target:/target

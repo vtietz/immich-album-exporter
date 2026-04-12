@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+dist/
+build/
+.coverage
+htmlcov/
+.tmp/
+data/
+target/
+config/config.yml

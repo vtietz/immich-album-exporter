@@ -1,0 +1,17 @@
+services:
+  e2e-runner:
+    build:
+      context: ${PROJECT_ROOT:-.}
+      target: dev
+    entrypoint: ["python"]
+    depends_on:
+      immich-server:
+        condition: service_started
+    environment:
+      IMMICH_URL: http://immich-server:2283/api
+      E2E_TARGET_ROOT: /tmp/e2e-target
+      E2E_STATE_ROOT: /tmp/e2e-state
+    command: ["tests/e2e/run_e2e.py"]
+    volumes:
+      - ${PROJECT_ROOT:-.}:/workspace
+    working_dir: /workspace

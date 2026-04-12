@@ -24,7 +24,10 @@ FROM base AS dev
 
 USER root
 
-RUN pip install --no-cache-dir ".[dev]"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir ".[dev]"
 
 ENTRYPOINT ["python", "-m", "immich_album_exporter"]
 CMD ["sync-once", "--config", "/config/config.yml"]

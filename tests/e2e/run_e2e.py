@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import time
 from typing import Any
@@ -14,7 +15,6 @@ from PIL import Image
 
 from immich_album_exporter.config import AppConfig, BehaviorConfig, ImmichConfig, PathsConfig, PollConfig, SelectionConfig, TemplateConfig
 from immich_album_exporter.importer import build_importer
-from immich_album_exporter.metadata import resolve_asset_date
 
 
 IMMICH_URL = os.environ["IMMICH_URL"].rstrip("/")
@@ -133,6 +133,44 @@ def upload_demo_image(owner_client: SessionClient, taken_at: datetime, filename:
         return payload["id"] if "id" in payload else payload["assetId"]
 
 
+def upload_demo_video(owner_client: SessionClient, taken_at: datetime, filename: str, *, duration_seconds: int = 1) -> str:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        video_path = Path(temp_dir) / filename
+        palette = ["blue", "green", "red", "yellow"]
+        color = palette[sum(filename.encode("utf-8")) % len(palette)]
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                f"color=c={color}:s=64x64:d={duration_seconds}",
+                "-pix_fmt",
+                "yuv420p",
+                str(video_path),
+            ],
+            check=True,
+        )
+        with video_path.open("rb") as handle:
+            response = owner_client.post(
+                "/assets",
+                files={
+                    "assetData": (filename, handle, "video/mp4"),
+                    "deviceAssetId": (None, str(uuid.uuid4())),
+                    "deviceId": (None, "e2e-test-device"),
+                    "fileCreatedAt": (None, taken_at.isoformat().replace("+00:00", "Z")),
+                    "fileModifiedAt": (None, taken_at.isoformat().replace("+00:00", "Z")),
+                    "filename": (None, filename),
+                },
+            )
+        payload = response.json()
+        return payload["id"] if "id" in payload else payload["assetId"]
+
+
 def add_assets_to_album(client: SessionClient, album_id: str, asset_ids: list[str]) -> None:
     client.put(
         "/albums/assets",
@@ -195,8 +233,10 @@ def main() -> int:
         ).json()
 
         first_taken_at = datetime(2026, 1, 24, 9, 15, 4, tzinfo=UTC)
+        first_video_taken_at = datetime(2026, 1, 24, 9, 15, 34, tzinfo=UTC)
         asset_1 = upload_demo_image(owner_client, first_taken_at, "DSC0001.JPG")
-        add_assets_to_album(owner_client, album["id"], [asset_1])
+        video_1 = upload_demo_video(owner_client, first_video_taken_at, "CLIP0001.MP4", duration_seconds=1)
+        add_assets_to_album(owner_client, album["id"], [asset_1, video_1])
         owner_client.put(
             f"/albums/{album['id']}/users",
             json={"albumUsers": [{"userId": importer_user['id'], "role": "editor"}]},
@@ -208,19 +248,19 @@ def main() -> int:
 
     importer_client = SessionClient(IMMICH_URL, importer_login["accessToken"])
     try:
-        imported_album = importer_client.get(f"/albums/{album['id']}").json()
         expected_dir = TARGET_ROOT / str(first_taken_at.year) / "2026-01-24 Winter Trip"
-        first_asset = imported_album["assets"][0]
-        expected_first_file = expected_dir / resolve_asset_date(first_asset).strftime("%Y%m%d_%H%M%S.jpg")
+        expected_first_file = expected_dir / first_taken_at.strftime("%Y%m%d_%H%M%S.jpg")
+        expected_first_video = expected_dir / first_video_taken_at.strftime("%Y%m%d_%H%M%S.mp4")
         assert expected_first_file.exists(), f"Expected initial import at {expected_first_file}; summary={first_sync}; existing={list(TARGET_ROOT.rglob('*'))}"
+        assert expected_first_video.exists(), f"Expected initial video export at {expected_first_video}; summary={first_sync}; existing={list(TARGET_ROOT.rglob('*'))}"
 
         importer_client.patch(f"/albums/{album['id']}", json={"albumName": "Renamed Album"})
         second_taken_at = datetime(2026, 1, 24, 9, 16, 4, tzinfo=UTC)
         owner_token = login("owner@example.com", "OwnerPass123!")["accessToken"]
         owner_client = SessionClient(IMMICH_URL, owner_token)
         try:
-            asset_2 = upload_demo_image(owner_client, second_taken_at, "DSC0002.JPG")
-            add_assets_to_album(owner_client, album["id"], [asset_2])
+            video_2 = upload_demo_video(owner_client, second_taken_at, "CLIP0002.MP4", duration_seconds=2)
+            add_assets_to_album(owner_client, album["id"], [video_2])
         finally:
             owner_client.close()
     finally:
@@ -229,7 +269,7 @@ def main() -> int:
     second_sync = run_sync(importer_login["accessToken"])
 
     frozen_dir = TARGET_ROOT / str(first_taken_at.year) / "2026-01-24 Winter Trip"
-    second_expected = frozen_dir / second_taken_at.strftime("%Y%m%d_%H%M%S.jpg")
+    second_expected = frozen_dir / second_taken_at.strftime("%Y%m%d_%H%M%S.mp4")
     assert second_expected.exists(), f"Expected renamed album to keep original folder mapping at {second_expected}; summary={second_sync}; existing={list(TARGET_ROOT.rglob('*'))}"
 
     print("E2E test passed")

@@ -137,7 +137,7 @@ Use `PUID` and `PGID` in `.env` so written files match the host user permissions
 ./run.sh test
 ```
 
-The test wrapper downloads the current official Immich Docker Compose stack into `.tmp/e2e/immich`, boots it, seeds users and demo assets through the Immich API, runs the importer, renames the album, uploads a second asset, and verifies that the original target folder mapping remains frozen.
+The test wrapper downloads the current official Immich Docker Compose stack into `.tmp/e2e/immich`, boots it, seeds users and generated demo image and video assets through the Immich API, runs the exporter, renames the album, uploads a second video asset, and verifies that the original target folder mapping remains frozen.
 
 ## GitHub Container Build
 
@@ -146,5 +146,5 @@ This repository includes a GitHub Actions workflow to build and publish a contai
 ## Limits and Follow-Ups
 
 - The worker currently uses polling, not push-based updates.
-- The V1 e2e test uses image uploads. Video-specific e2e coverage can be added next if you want ffmpeg-backed fixtures.
+- The e2e test covers generated image and video uploads using ffmpeg-backed video fixtures in the dev container.
 - The importer trusts Immich metadata first. If you later want deeper fallback parsing from downloaded files, that can be added as a second metadata provider.

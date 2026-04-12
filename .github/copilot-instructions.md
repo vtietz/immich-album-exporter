@@ -14,3 +14,5 @@
 - If a new development or test workflow is needed, add it to [run.sh](../run.sh) rather than documenting a host-level command.
 - When editing or validating code, assume the repository is mounted into the dev container via Docker Compose.
 - Keep source code editable from the host, but execute Python inside containers only.
+- After completing code changes, propose a concise git commit message in the final response.
+- Do not create commits automatically unless the user explicitly asks for a commit.

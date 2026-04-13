@@ -6,6 +6,7 @@ This service exports albums owned by or shared with a configured Immich user int
 
 - Reads albums from Immich using an API key or access token.
 - Selects albums owned by a user, shared with a user, or both.
+- Can ignore albums created before a configured start date.
 - Exports photos and videos into a target volume using configurable folder and filename templates.
 - Preserves file timestamps on exported files based on Immich metadata.
 - Freezes the first resolved album directory so later album renames in Immich do not reshuffle existing folders.
@@ -50,6 +51,8 @@ This accepts the simpler `YYYY/YYYY-MM-DD Album Title` convention you preferred 
 
 Copy [config/config.example.yml](config/config.example.yml) to `config/config.yml` and adjust it.
 
+For a field-by-field explanation of every config parameter, see [docs/CONFIGURATION.MD](docs/CONFIGURATION.MD).
+
 ```yaml
 immich:
   base_url: ${IMMICH_BASE_URL:http://immich-server:2283/api}
@@ -59,6 +62,7 @@ immich:
 selection:
   mode: owned_or_shared
   user_id: ${IMMICH_SELECTION_USER_ID:}
+  start_date: ${IMMICH_SELECTION_START_DATE:}
 
 paths:
   target_root: /target
@@ -78,6 +82,7 @@ Notes:
 
 - Use either `api_key` or `access_token`.
 - `user_id` is optional. If omitted, the importer works with whatever the authenticated account can see.
+- `start_date` is optional. If set, only albums with `createdAt` on or after that timestamp are exported. Use `YYYY-MM-DD` or a full ISO timestamp like `2026-01-01T00:00:00Z`.
 - Folder and filename templates use Jinja2.
 
 ## Docker Usage

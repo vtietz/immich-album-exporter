@@ -7,6 +7,7 @@ immich:
 selection:
   mode: owned_or_shared
   user_id: ${IMMICH_SELECTION_USER_ID:}
+  start_date: ${IMMICH_SELECTION_START_DATE:}
   include_album_ids: []
   exclude_album_ids: []
 

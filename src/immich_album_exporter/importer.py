@@ -10,7 +10,7 @@ from typing import Any
 
 from .config import AppConfig
 from .immich_client import ImmichClient
-from .metadata import resolve_album_date, resolve_asset_date, resolve_extension, resolve_original_filename
+from .metadata import parse_datetime, resolve_album_date, resolve_asset_date, resolve_extension, resolve_original_filename
 from .state import AssetImportRecord, StateStore
 from .template import TemplateRenderer
 
@@ -47,6 +47,8 @@ class AlbumImporter:
 
             album = self._client.get_album(album_id)
             if not self._matches_user_filter(album):
+                continue
+            if not self._matches_start_date_filter(album):
                 continue
 
             summary.albums_seen += 1
@@ -89,6 +91,21 @@ class AlbumImporter:
         if mode == "shared":
             return user_id in member_ids and owner_id != user_id
         return owner_id == user_id or user_id in member_ids
+
+    def _matches_start_date_filter(self, album: dict[str, Any]) -> bool:
+        selection_start_date = self._config.selection.start_date
+        if selection_start_date is None:
+            return True
+
+        album_created_at = parse_datetime(album.get("createdAt"))
+        if album_created_at is None:
+            logger.info(
+                "Skipping album %s because createdAt is missing and selection.start_date is configured",
+                album.get("id"),
+            )
+            return False
+
+        return album_created_at >= selection_start_date
 
     def _resolve_album_directory(self, album: dict[str, Any]) -> str:
         album_id = album["id"]

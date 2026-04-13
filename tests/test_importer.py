@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from immich_album_exporter.config import AppConfig, BehaviorConfig, ImmichConfig, PathsConfig, PollConfig, SelectionConfig, TemplateConfig
@@ -104,5 +105,47 @@ def test_importer_appends_on_filename_collision(tmp_path: Path) -> None:
     target_dir = tmp_path / "target" / "2026" / "2026-01-24 Collision Test"
     assert (target_dir / "20260124_091504.jpg").exists()
     assert (target_dir / "20260124_091504_01.jpg").exists()
+
+    state.close()
+
+
+def test_importer_skips_albums_created_before_selection_start_date(tmp_path: Path) -> None:
+    old_album = {
+        "id": "album-1",
+        "albumName": "Old Album",
+        "ownerId": "user-1",
+        "createdAt": "2025-12-31T23:59:59Z",
+        "startDate": "2025-12-31T23:59:59Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "IMG_0001.JPG", "fileCreatedAt": "2026-01-24T09:15:04Z"},
+        ],
+    }
+    new_album = {
+        "id": "album-2",
+        "albumName": "New Album",
+        "ownerId": "user-1",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "startDate": "2026-01-01T00:00:00Z",
+        "assets": [
+            {"id": "asset-2", "originalFileName": "IMG_0002.JPG", "fileCreatedAt": "2026-01-24T09:16:04Z"},
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}, {"id": "album-2"}],
+        album_details={"album-1": old_album, "album-2": new_album},
+        downloads={"asset-1": b"old", "asset-2": b"new"},
+    )
+    state = StateStore(tmp_path / "state.db")
+    config = build_config(tmp_path)
+    config.selection.start_date = datetime(2026, 1, 1, tzinfo=UTC)
+    importer = AlbumImporter(config, client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+
+    summary = importer.run_once()
+
+    assert summary.albums_seen == 1
+    assert summary.assets_imported == 1
+    assert not (tmp_path / "target" / "2025" / "2025-12-31 Old Album").exists()
+    assert (tmp_path / "target" / "2026" / "2026-01-01 New Album" / "20260124_091604.jpg").exists()
 
     state.close()

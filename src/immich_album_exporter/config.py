@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 import os
 import re
 from typing import Any, Literal
 
 import yaml
+
+from .metadata import parse_datetime
 
 
 ENV_PATTERN = re.compile(r"\$\{([^}:]+)(?::([^}]*))?\}")
@@ -54,6 +57,7 @@ class ImmichConfig:
 class SelectionConfig:
     mode: SelectionMode = "owned_or_shared"
     user_id: str | None = None
+    start_date: datetime | None = None
     include_album_ids: list[str] = field(default_factory=list)
     exclude_album_ids: list[str] = field(default_factory=list)
 
@@ -114,6 +118,7 @@ def load_config(path: str | Path) -> AppConfig:
         selection=SelectionConfig(
             mode=expanded.get("selection", {}).get("mode", "owned_or_shared"),
             user_id=expanded.get("selection", {}).get("user_id") or None,
+            start_date=parse_datetime(expanded.get("selection", {}).get("start_date")),
             include_album_ids=list(expanded.get("selection", {}).get("include_album_ids", [])),
             exclude_album_ids=list(expanded.get("selection", {}).get("exclude_album_ids", [])),
         ),

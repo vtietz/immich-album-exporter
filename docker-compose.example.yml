@@ -6,8 +6,13 @@ services:
     restart: unless-stopped
     environment:
       TZ: ${TZ:-UTC}
+      IMMICH_BASE_URL: ${IMMICH_BASE_URL:-}
+      IMMICH_API_KEY: ${IMMICH_API_KEY:-}
+      IMMICH_ACCESS_TOKEN: ${IMMICH_ACCESS_TOKEN:-}
+      IMMICH_SELECTION_USER_ID: ${IMMICH_SELECTION_USER_ID:-}
+      IMMICH_SELECTION_START_DATE: ${IMMICH_SELECTION_START_DATE:-}
     command: ["worker", "--config", "/config/config.yml"]
     volumes:
-      - ./config:/config:ro
-      - ./data:/data
-      - ./target:/target
+      - ${IMMICH_EXPORTER_CONFIG_DIR:-./config}:/config:ro
+      - ${IMMICH_EXPORTER_DATA_DIR:-./data}:/data
+      - ${IMMICH_EXPORTER_TARGET_DIR:-./target}:/target

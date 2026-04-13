@@ -51,6 +51,8 @@ This accepts the simpler `YYYY/YYYY-MM-DD Album Title` convention you preferred 
 
 Copy [config/config.example.yml](config/config.example.yml) to `config/config.yml` and adjust it.
 
+If the defaults in the example config are fine for you, you can keep `config/config.yml` unchanged and set only the `IMMICH_*` values in `.env`. The compose files pass those variables into the container and the exporter resolves them from the config template at runtime.
+
 For a field-by-field explanation of every config parameter, see [docs/CONFIGURATION.MD](docs/CONFIGURATION.MD).
 
 ```yaml
@@ -84,6 +86,37 @@ Notes:
 - `user_id` is optional. If omitted, the importer works with whatever the authenticated account can see.
 - `start_date` is optional. If set, only albums with `createdAt` on or after that timestamp are exported. Use `YYYY-MM-DD` or a full ISO timestamp like `2026-01-01T00:00:00Z`.
 - Folder and filename templates use Jinja2.
+
+### Create an Immich API Key
+
+Immich API keys are user-scoped, not global. A key belongs to the user account that created it, and the exporter can only see albums and assets that this user is allowed to access. The selected permissions further limit what that key can do.
+
+For this exporter, the safest setup is usually a dedicated Immich user with albums shared to that user, then an API key created inside that same user account.
+
+Create the key in the Immich web UI:
+
+1. Sign in as the Immich user that should be used by the exporter.
+2. Open `User Settings`.
+3. Open `API Keys`.
+4. Create a new key.
+5. Give it a name such as `immich-album-exporter`.
+6. Select only the permissions the exporter needs.
+7. Copy the secret immediately and store it as `IMMICH_API_KEY` in `.env` or directly in `config/config.yml`.
+
+Recommended minimum permissions for this project:
+
+- `album.read`
+- `asset.download`
+
+Not required for this exporter:
+
+- `asset.upload`
+- `album.update`
+- `album.delete`
+- any `admin*` permission
+- `apiKey.*` permissions for runtime use
+
+If you prefer not to manage fine-grained scopes at first, Immich also allows creating a broader key, but this project should work with the two permissions above because it only lists albums, reads album details, and downloads original assets.
 
 ## Docker Usage
 
@@ -139,6 +172,12 @@ cp .env.example .env
 cp config/config.example.yml config/config.yml
 docker compose -f docker-compose.example.yml up -d
 ```
+
+For the standalone example, you can keep the default local folders or point the bind mounts somewhere else in `.env` with:
+
+- `IMMICH_EXPORTER_CONFIG_DIR`
+- `IMMICH_EXPORTER_DATA_DIR`
+- `IMMICH_EXPORTER_TARGET_DIR`
 
 Use `PUID` and `PGID` in `.env` so written files match the host user permissions.
 

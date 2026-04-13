@@ -59,6 +59,17 @@ Immich API key used for authentication.
 - Type: string
 - Default: empty
 
+Immich API keys are user-scoped. The key belongs to the user account that created it, so the exporter can only access albums and assets visible to that account.
+
+Recommended permissions for this exporter:
+
+- `album.read`
+- `asset.download`
+
+The exporter does not need write or admin permissions.
+
+In normal setups, use an API key and leave `immich.access_token` empty.
+
 If both are present, the exporter sends both headers, but in normal use you should choose one authentication method.
 
 ### `immich.access_token`
@@ -68,6 +79,8 @@ Immich bearer token used for authentication.
 - Required: yes, unless `immich.api_key` is set
 - Type: string
 - Default: empty
+
+This is an alternative to `immich.api_key`, not an additional secret you need alongside it.
 
 ### `immich.request_timeout_seconds`
 
@@ -103,7 +116,11 @@ Optional Immich user ID used with `selection.mode`.
 - Type: string
 - Default: empty
 
-If omitted, the exporter works with whatever albums are visible to the authenticated account.
+This is a single user ID, not an array.
+
+If omitted, the exporter works with whatever albums are visible to the authenticated account. It does not bypass Immich visibility rules and it does not automatically see albums from every user on the server.
+
+If you need finer selection across multiple albums, use `selection.include_album_ids` and `selection.exclude_album_ids`.
 
 ### `selection.start_date`
 

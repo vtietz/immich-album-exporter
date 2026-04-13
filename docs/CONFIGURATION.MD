@@ -242,6 +242,8 @@ Available variables:
 - `original_filename`: original asset filename when available
 - `original_stem`: original filename without extension
 
+`asset_date` is resolved in the container timezone. If you rely on local wall-clock naming, set `TZ` in `.env` accordingly.
+
 ## behavior
 
 ### `behavior.collision_policy`

@@ -86,6 +86,7 @@ Notes:
 - `user_id` is optional. If omitted, the importer works with whatever the authenticated account can see.
 - `start_date` is optional. If set, only albums with `createdAt` on or after that timestamp are exported. Use `YYYY-MM-DD` or a full ISO timestamp like `2026-01-01T00:00:00Z`.
 - Folder and filename templates use Jinja2.
+- Timestamp-based filenames and preserved file timestamps follow the container timezone (`TZ`). Set `TZ` to your local zone (for example `Europe/Berlin`) to avoid hour offsets and unintended filename collisions.
 
 ### Create an Immich API Key
 

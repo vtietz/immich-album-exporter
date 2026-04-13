@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 import mimetypes
 from typing import Any, Iterable
@@ -19,17 +19,21 @@ def _iter_candidates(asset: dict[str, Any], paths: Iterable[tuple[str, ...]]) ->
 
 
 def parse_datetime(value: str | datetime | None) -> datetime | None:
+    local_tz = datetime.now().astimezone().tzinfo
+    if local_tz is None:
+        return None
+
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
+        return value.astimezone(local_tz) if value.tzinfo else value.replace(tzinfo=local_tz)
 
     normalized = value.replace("Z", "+00:00")
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return None
-    return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(local_tz) if parsed.tzinfo else parsed.replace(tzinfo=local_tz)
 
 
 def resolve_asset_date(asset: dict[str, Any]) -> datetime:
@@ -46,7 +50,7 @@ def resolve_asset_date(asset: dict[str, Any]) -> datetime:
         parsed = parse_datetime(candidate)
         if parsed:
             return parsed
-    return datetime.now(tz=UTC)
+    return datetime.now().astimezone()
 
 
 def resolve_album_date(album: dict[str, Any]) -> datetime:
@@ -59,7 +63,7 @@ def resolve_album_date(album: dict[str, Any]) -> datetime:
         parsed = parse_datetime(candidate)
         if parsed:
             return parsed
-    return datetime.now(tz=UTC)
+    return datetime.now().astimezone()
 
 
 def resolve_original_filename(asset: dict[str, Any]) -> str:

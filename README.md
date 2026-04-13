@@ -1,6 +1,6 @@
 # Immich Album Exporter
 
-This service exports albums owned by or shared with a configured Immich user into a local folder structure using configurable folder and filename templates, while preserving timestamps and leaving the originals in Immich untouched.
+Exports albums owned by or shared with a configured Immich user into a local folder structure using configurable folder and filename templates, while preserving timestamps and leaving the originals in Immich untouched.
 
 ## What It Does
 
@@ -38,14 +38,6 @@ With an album called `2026-01-24 Winter Trip`, the result will look like this:
 ```
 
 This accepts the simpler `YYYY/YYYY-MM-DD Album Title` convention you preferred and stays safe across Windows and Unix path rules.
-
-## Current Design Decisions
-
-- Album selection mode supports `owned`, `shared`, and `owned_or_shared`.
-- API-only import mode is used, so no source volume is required.
-- Polling is the default trigger because Immich does not expose a clear webhook path in the API docs used for this project.
-- Album directory mapping is frozen after the first import.
-- If an album is deleted or assets are removed from the source, nothing is removed locally.
 
 ## Configuration
 
@@ -160,6 +152,65 @@ Open a shell in the dev container with the current project mounted:
 ./run.sh dev-shell
 ```
 
+## Direct Script Execution
+
+Docker remains the primary and tested workflow for this project.
+
+You can run the entrypoint directly either inside Docker (recommended) or from a local Python environment (advanced/optional).
+
+### Inside Docker (Recommended)
+
+Run the module entrypoint directly:
+
+```bash
+docker compose run --rm --entrypoint python immich-album-exporter-dev -m immich_album_exporter sync-once --config /config/config.yml
+```
+
+Run the installed console script directly:
+
+```bash
+docker compose run --rm --entrypoint immich-album-exporter immich-album-exporter-dev sync-once --config /config/config.yml
+```
+
+Check available commands/options:
+
+```bash
+docker compose run --rm --entrypoint python immich-album-exporter-dev -m immich_album_exporter --help
+docker compose run --rm --entrypoint immich-album-exporter immich-album-exporter-dev --help
+```
+
+### Local Python (Optional)
+
+If you prefer a direct local run, create your own environment and install dependencies from [requirements.txt](requirements.txt):
+
+Python 3.12 or newer is required.
+
+`requirements.txt` and `requirements-dev.txt` are also used by the Docker build. They delegate to the package metadata in `pyproject.toml` (`.` and `.[dev]`), so dependency versions stay in a single source of truth.
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Then run from source via the helper script:
+
+```bash
+./scripts/run-local.sh sync-once --config ./config/config.yml
+```
+
+Or call the module directly with `PYTHONPATH` set:
+
+```bash
+PYTHONPATH=./src python -m immich_album_exporter sync-once --config ./config/config.yml
+```
+
+Check available commands/options locally:
+
+```bash
+./scripts/run-local.sh --help
+```
+
 Stop the stack:
 
 ```bash
@@ -208,10 +259,4 @@ The CI pipeline has three stages:
 - real Immich end-to-end tests on pushes, manual runs, and nightly schedule
 - package publishing to GitHub Container Registry after the tests pass on push
 
-The package is published to `ghcr.io/vtietz/immich-album-exporter`. If you want others to pull it without authentication, set the package visibility to public in GitHub after the first publish.
-
-## Limits and Follow-Ups
-
-- The worker currently uses polling, not push-based updates.
-- The e2e test covers generated image and video uploads using ffmpeg-backed video fixtures in the dev container.
-- The importer trusts Immich metadata first. If you later want deeper fallback parsing from downloaded files, that can be added as a second metadata provider.
+The package is published to `ghcr.io/vtietz/immich-album-exporter`. 

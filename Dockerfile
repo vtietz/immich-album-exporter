@@ -6,10 +6,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml README.md /app/
+COPY requirements.txt requirements-dev.txt /app/
 COPY src /app/src
 
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir .
+    && pip install --no-cache-dir -r requirements.txt
 
 FROM base AS runtime
 
@@ -27,7 +28,7 @@ USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir ".[dev]"
+    && pip install --no-cache-dir -r requirements-dev.txt
 
 ENTRYPOINT ["python", "-m", "immich_album_exporter"]
 CMD ["sync-once", "--config", "/config/config.yml"]

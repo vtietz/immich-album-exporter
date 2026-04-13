@@ -27,10 +27,7 @@ EOF
 }
 
 cleanup_e2e() {
-  PROJECT_ROOT="$ROOT_DIR" compose \
-    -f "$E2E_DIR/docker-compose.yml" \
-    -f "$ROOT_DIR/docker-compose.e2e.yml" \
-    down -v >/dev/null 2>&1 || true
+  e2e_compose down -v >/dev/null 2>&1 || true
 }
 
 reset_e2e_data() {
@@ -41,6 +38,13 @@ reset_e2e_data() {
 
 compose() {
   docker compose "$@"
+}
+
+e2e_compose() {
+  PROJECT_ROOT="$ROOT_DIR" compose \
+    -f "$E2E_DIR/docker-compose.yml" \
+    -f "$ROOT_DIR/docker-compose.e2e.yml" \
+    "$@"
 }
 
 run_dev() {
@@ -80,10 +84,17 @@ case "${1:-}" in
     download_immich_stack
     reset_e2e_data
     trap cleanup_e2e EXIT
-    PROJECT_ROOT="$ROOT_DIR" compose \
-      -f "$E2E_DIR/docker-compose.yml" \
-      -f "$ROOT_DIR/docker-compose.e2e.yml" \
-      up --build --abort-on-container-exit --exit-code-from e2e-runner --attach e2e-runner --no-attach immich-server --no-attach immich-machine-learning --no-attach immich_postgres --no-attach immich_redis
+    e2e_compose up -d --build
+    e2e_compose logs --no-color -f e2e-runner &
+    log_pid=$!
+    set +e
+    e2e_compose wait --down-project e2e-runner
+    status=$?
+    set -e
+    wait "$log_pid" || true
+    if [[ $status -ne 0 ]]; then
+      exit "$status"
+    fi
     cleanup_e2e
     trap - EXIT
     ;;

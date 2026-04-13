@@ -1,4 +1,6 @@
 services:
   immich-album-exporter:
+    # This file is an override for `docker-compose.yml` used by `./run.sh prod-up`.
+    # It swaps the locally built image for a published package image.
     build: null
-    image: ${IMMICH_ALBUM_EXPORTER_IMAGE:-ghcr.io/example/immich-album-exporter:latest}
+    image: ${IMMICH_ALBUM_EXPORTER_IMAGE:-ghcr.io/vtietz/immich-album-exporter:latest}

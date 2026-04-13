@@ -89,6 +89,12 @@ Notes:
 
 This repository is Docker-only for development and testing. Do not create a host virtualenv and do not install Python dependencies on the host. Use only [run.sh](run.sh).
 
+Two compose variants are provided:
+
+- [docker-compose.yml](docker-compose.yml): local development and local image builds
+- [docker-compose.prod.yml](docker-compose.prod.yml): override used by `./run.sh prod-up` to switch from a locally built image to the published package image
+- [docker-compose.example.yml](docker-compose.example.yml): standalone example for users who just want to run the published package directly
+
 Prepare folders and config:
 
 ```bash
@@ -126,6 +132,14 @@ Stop the stack:
 ./run.sh down
 ```
 
+If you want to run the published package without using `run.sh`, you can use the standalone example directly:
+
+```bash
+cp .env.example .env
+cp config/config.example.yml config/config.yml
+docker compose -f docker-compose.example.yml up -d
+```
+
 Use `PUID` and `PGID` in `.env` so written files match the host user permissions.
 
 ## Testing
@@ -146,7 +160,15 @@ The test wrapper downloads the current official Immich Docker Compose stack into
 
 ## GitHub Container Build
 
-This repository includes a GitHub Actions workflow that runs the Docker-based unit and end-to-end tests on pushes and pull requests. On successful pushes to `main` or version tags, it also publishes a container image package to GitHub Container Registry.
+This repository includes a modular GitHub Actions setup with a top-level CI workflow and reusable workflows for unit tests, end-to-end tests, and package publishing.
+
+The CI pipeline has three stages:
+
+- unit tests on every push and pull request
+- real Immich end-to-end tests on pushes, manual runs, and nightly schedule
+- package publishing to GitHub Container Registry after the tests pass on push
+
+The package is published to `ghcr.io/vtietz/immich-album-exporter`. If you want others to pull it without authentication, set the package visibility to public in GitHub after the first publish.
 
 ## Limits and Follow-Ups
 

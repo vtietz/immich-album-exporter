@@ -1,0 +1,13 @@
+services:
+  immich-album-exporter:
+    image: ${IMMICH_ALBUM_EXPORTER_IMAGE:-ghcr.io/vtietz/immich-album-exporter:latest}
+    container_name: immich-album-exporter
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+    command: ["worker", "--config", "/config/config.yml"]
+    volumes:
+      - ./config:/config:ro
+      - ./data:/data
+      - ./target:/target

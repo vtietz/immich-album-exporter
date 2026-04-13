@@ -1,0 +1,18 @@
+name: reusable-e2e
+
+on:
+  workflow_call:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run end-to-end tests
+        run: |
+          chmod +x ./run.sh
+          ./run.sh test

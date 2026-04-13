@@ -83,7 +83,7 @@ case "${1:-}" in
     PROJECT_ROOT="$ROOT_DIR" compose \
       -f "$E2E_DIR/docker-compose.yml" \
       -f "$ROOT_DIR/docker-compose.e2e.yml" \
-      up --build --abort-on-container-exit --exit-code-from e2e-runner
+      up --build --abort-on-container-exit --exit-code-from e2e-runner --attach e2e-runner --no-attach immich-server --no-attach immich-machine-learning --no-attach immich_postgres --no-attach immich_redis
     cleanup_e2e
     trap - EXIT
     ;;

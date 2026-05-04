@@ -8,6 +8,8 @@ import tempfile
 import time
 from typing import Any
 
+import httpx
+
 from .config import AppConfig
 from .immich_client import ImmichClient
 from .metadata import parse_datetime, resolve_album_date, resolve_asset_date, resolve_extension, resolve_original_filename
@@ -175,7 +177,22 @@ class AlbumImporter:
             return "imported"
 
         final_relpath = str(target_path.relative_to(self._config.paths.target_root))
-        self._download_to_target(asset_id, target_path, asset_date)
+        try:
+            self._download_to_target(asset_id, target_path, asset_date)
+        except httpx.HTTPStatusError as error:
+            status_code = error.response.status_code
+            logger.warning(
+                "Skipping asset %s because Immich returned HTTP %s while downloading original",
+                asset_id,
+                status_code,
+            )
+            self._state.save_asset_import(album_id, asset_id, None, f"skipped_download_http_{status_code}")
+            return "skipped"
+        except httpx.HTTPError as error:
+            logger.warning("Skipping asset %s because download request failed: %s", asset_id, error)
+            self._state.save_asset_import(album_id, asset_id, None, "skipped_download_error")
+            return "skipped"
+
         self._state.save_asset_import(album_id, asset_id, final_relpath, "imported")
         logger.info("Imported asset %s -> %s", asset_id, target_path)
         return "imported"

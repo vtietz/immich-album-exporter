@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
+
 from immich_album_exporter.config import AppConfig, BehaviorConfig, ImmichConfig, PathsConfig, PollConfig, SelectionConfig, TemplateConfig
 from immich_album_exporter.importer import AlbumImporter
 from immich_album_exporter.state import StateStore
@@ -13,10 +15,17 @@ TEMPLATES = TemplateConfig()
 
 
 class FakeImmichClient:
-    def __init__(self, albums: list[dict], album_details: dict[str, dict], downloads: dict[str, bytes]) -> None:
+    def __init__(
+        self,
+        albums: list[dict],
+        album_details: dict[str, dict],
+        downloads: dict[str, bytes],
+        failed_downloads: set[str] | None = None,
+    ) -> None:
         self._albums = albums
         self._album_details = album_details
         self._downloads = downloads
+        self._failed_downloads = failed_downloads or set()
 
     def list_albums(self, mode: str) -> list[dict]:
         return list(self._albums)
@@ -25,6 +34,10 @@ class FakeImmichClient:
         return self._album_details[album_id]
 
     def download_asset(self, asset_id: str, destination: Path) -> None:
+        if asset_id in self._failed_downloads:
+            request = httpx.Request("GET", f"http://unused/assets/{asset_id}/original")
+            response = httpx.Response(500, request=request)
+            raise httpx.HTTPStatusError("Server error", request=request, response=response)
         destination.write_bytes(self._downloads[asset_id])
 
 
@@ -296,5 +309,38 @@ def test_importer_skips_albums_created_before_selection_start_date(tmp_path: Pat
     assert summary.assets_imported == 1
     assert not (tmp_path / "target" / "2025" / "2025-12-31 Old Album").exists()
     assert (tmp_path / "target" / "2026" / "2026-01-01 New Album" / "20260124_091604.jpg").exists()
+
+    state.close()
+
+
+def test_importer_skips_asset_on_download_http_error(tmp_path: Path) -> None:
+    album = {
+        "id": "album-1",
+        "albumName": "Flaky Download",
+        "ownerId": "user-1",
+        "startDate": "2026-01-24T09:15:04Z",
+        "assets": [
+            {"id": "asset-fail", "originalFileName": "IMG_0001.JPG", "fileCreatedAt": "2026-01-24T09:15:04Z"},
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}],
+        album_details={"album-1": album},
+        downloads={"asset-fail": b""},
+        failed_downloads={"asset-fail"},
+    )
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(build_config(tmp_path), client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+
+    summary = importer.run_once()
+
+    assert summary.assets_imported == 0
+    assert summary.assets_skipped == 1
+    assert not (tmp_path / "target" / "2026" / "2026-01-24 Flaky Download" / "20260124_091504.jpg").exists()
+
+    record = state.get_asset_import("album-1", "asset-fail")
+    assert record is not None
+    assert record.status == "skipped_download_http_500"
 
     state.close()

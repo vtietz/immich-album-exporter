@@ -70,6 +70,7 @@ behavior:
   collision_policy: append
   freeze_album_directory: true
   preserve_file_timestamps: true
+  deduplication_mode: global
 ```
 
 Notes:
@@ -79,6 +80,7 @@ Notes:
 - `start_date` is optional. If set, only albums with `createdAt` on or after that timestamp are exported. Use `YYYY-MM-DD` or a full ISO timestamp like `2026-01-01T00:00:00Z`.
 - Folder and filename templates use Jinja2.
 - Timestamp-based filenames and preserved file timestamps follow the container timezone (`TZ`). Set `TZ` to your local zone (for example `Europe/Berlin`) to avoid hour offsets and unintended filename collisions.
+- `deduplication_mode` controls asset-ID dedupe scope: `global` (across all albums), `album` (within one album only), or `none` (disabled).
 
 ### Create an Immich API Key
 

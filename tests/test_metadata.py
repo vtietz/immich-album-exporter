@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from immich_album_exporter.metadata import parse_datetime, resolve_extension, resolve_original_filename
+from immich_album_exporter.metadata import parse_datetime, resolve_asset_date, resolve_extension, resolve_original_filename
 
 
 def test_resolve_extension_falls_back_to_mp4_for_video_assets() -> None:
@@ -30,3 +30,27 @@ def test_parse_datetime_interprets_naive_values_as_local_timezone() -> None:
 
     assert parsed is not None
     assert parsed.tzinfo is not None
+
+
+def test_resolve_asset_date_prefers_android_timestamp_filename_for_images() -> None:
+    asset = {
+        "id": "asset-1",
+        "originalFileName": "20260402_220543.jpg",
+        "fileCreatedAt": "2026-04-02T22:05:44",
+    }
+
+    resolved = resolve_asset_date(asset)
+
+    assert resolved.strftime("%Y%m%d_%H%M%S") == "20260402_220543"
+
+
+def test_resolve_asset_date_prefers_android_timestamp_filename_for_videos() -> None:
+    asset = {
+        "id": "asset-2",
+        "originalFileName": "20260402_220458.mp4",
+        "fileCreatedAt": "2026-04-02T22:05:46",
+    }
+
+    resolved = resolve_asset_date(asset)
+
+    assert resolved.strftime("%Y%m%d_%H%M%S") == "20260402_220458"

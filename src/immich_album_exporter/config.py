@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import os
 import re
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import yaml
 
@@ -15,6 +15,7 @@ from .metadata import parse_datetime
 ENV_PATTERN = re.compile(r"\$\{([^}:]+)(?::([^}]*))?\}")
 SelectionMode = Literal["owned", "shared", "owned_or_shared"]
 CollisionPolicy = Literal["append", "skip", "overwrite"]
+DeduplicationMode = Literal["global", "album", "none"]
 
 
 def _as_bool(value: Any, default: bool) -> bool:
@@ -43,6 +44,18 @@ def _expand_env(value: Any) -> Any:
         return {key: _expand_env(item) for key, item in value.items()}
 
     return value
+
+
+def _parse_deduplication_mode(mode_value: Any) -> DeduplicationMode:
+    if isinstance(mode_value, str) and mode_value.strip():
+        normalized = mode_value.strip().lower()
+        if normalized in {"global", "album", "none"}:
+            return cast(DeduplicationMode, normalized)
+        raise ValueError(
+            f"Invalid behavior.deduplication_mode: {mode_value!r}. Expected one of: global, album, none"
+        )
+
+    return "global"
 
 
 @dataclass(slots=True)
@@ -84,6 +97,7 @@ class BehaviorConfig:
     collision_policy: CollisionPolicy = "append"
     freeze_album_directory: bool = True
     preserve_file_timestamps: bool = True
+    deduplication_mode: DeduplicationMode = "global"
     dry_run: bool = False
 
 
@@ -134,6 +148,7 @@ def load_config(path: str | Path) -> AppConfig:
             filename=expanded.get("templates", {}).get("filename", TemplateConfig().filename),
         ),
         behavior=BehaviorConfig(
+            deduplication_mode=_parse_deduplication_mode(expanded.get("behavior", {}).get("deduplication_mode")),
             collision_policy=expanded.get("behavior", {}).get("collision_policy", "append"),
             freeze_album_directory=_as_bool(expanded.get("behavior", {}).get("freeze_album_directory"), True),
             preserve_file_timestamps=_as_bool(expanded.get("behavior", {}).get("preserve_file_timestamps"), True),

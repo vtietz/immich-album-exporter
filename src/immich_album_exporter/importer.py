@@ -128,12 +128,27 @@ class AlbumImporter:
     def _import_asset(self, album: dict[str, Any], asset: dict[str, Any], album_directory: str) -> str:
         album_id = album["id"]
         asset_id = asset["id"]
-        record = self._state.get_asset_import(album_id, asset_id)
+        deduplication_mode = self._config.behavior.deduplication_mode
+        record = self._state.get_asset_import(album_id, asset_id) if deduplication_mode != "none" else None
 
-        if record and record.status == "imported" and record.target_relpath:
+        if deduplication_mode != "none" and record and record.status == "imported" and record.target_relpath:
             target_path = self._config.paths.target_root / record.target_relpath
             if target_path.exists():
                 return "skipped"
+
+        if deduplication_mode == "global":
+            imported_elsewhere = self._state.get_imported_asset_anywhere(asset_id)
+            if imported_elsewhere and imported_elsewhere.target_relpath:
+                existing_path = self._config.paths.target_root / imported_elsewhere.target_relpath
+                if existing_path.exists() and imported_elsewhere.album_id != album_id:
+                    logger.info(
+                        "Skipping asset %s for album %s because it was already imported for album %s",
+                        asset_id,
+                        album_id,
+                        imported_elsewhere.album_id,
+                    )
+                    self._state.save_asset_import(album_id, asset_id, imported_elsewhere.target_relpath, "skipped_existing_asset")
+                    return "skipped"
 
         asset_date = resolve_asset_date(asset)
         original_filename = resolve_original_filename(asset)

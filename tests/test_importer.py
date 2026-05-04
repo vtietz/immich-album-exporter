@@ -28,14 +28,14 @@ class FakeImmichClient:
         destination.write_bytes(self._downloads[asset_id])
 
 
-def build_config(tmp_path: Path, collision_policy: str = "append") -> AppConfig:
+def build_config(tmp_path: Path, collision_policy: str = "append", deduplication_mode: str = "global") -> AppConfig:
     return AppConfig(
         immich=ImmichConfig(base_url="http://unused", api_key="secret"),
         selection=SelectionConfig(mode="owned_or_shared"),
         poll=PollConfig(interval_seconds=60),
         paths=PathsConfig(target_root=tmp_path / "target", state_db_path=tmp_path / "state.db"),
         templates=TemplateConfig(),
-        behavior=BehaviorConfig(collision_policy=collision_policy),
+        behavior=BehaviorConfig(collision_policy=collision_policy, deduplication_mode=deduplication_mode),
     )
 
 
@@ -105,6 +105,155 @@ def test_importer_appends_on_filename_collision(tmp_path: Path) -> None:
     target_dir = tmp_path / "target" / "2026" / "2026-01-24 Collision Test"
     assert (target_dir / "20260124_091504.jpg").exists()
     assert (target_dir / "20260124_091504_01.jpg").exists()
+
+    state.close()
+
+
+def test_importer_second_run_skips_existing_asset_without_duplicate_file(tmp_path: Path) -> None:
+    album = {
+        "id": "album-1",
+        "albumName": "Idempotent Import",
+        "ownerId": "user-1",
+        "startDate": "2026-04-02T22:05:46Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "20260402_220546.mp4", "fileCreatedAt": "2026-04-02T22:05:46Z"},
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}],
+        album_details={"album-1": album},
+        downloads={"asset-1": b"video-content"},
+    )
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(build_config(tmp_path, collision_policy="append"), client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+
+    importer.run_once()
+    importer.run_once()
+
+    target_dir = tmp_path / "target" / "2026" / "2026-04-02 Idempotent Import"
+    assert (target_dir / "20260402_220546.mp4").exists()
+    assert not (target_dir / "20260402_220546_01.mp4").exists()
+
+    state.close()
+
+
+def test_importer_deduplicates_same_asset_across_albums(tmp_path: Path) -> None:
+    album_one = {
+        "id": "album-1",
+        "albumName": "2026-04-02 Ostern",
+        "ownerId": "user-1",
+        "startDate": "2026-04-02T22:05:46Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "20260402_220546.mp4", "fileCreatedAt": "2026-04-02T22:05:46Z"},
+        ],
+    }
+    album_two = {
+        "id": "album-2",
+        "albumName": "2026-04-02 Ostern",
+        "ownerId": "user-1",
+        "startDate": "2026-04-02T22:05:46Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "20260402_220546.mp4", "fileCreatedAt": "2026-04-02T22:05:46Z"},
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}, {"id": "album-2"}],
+        album_details={"album-1": album_one, "album-2": album_two},
+        downloads={"asset-1": b"video-content"},
+    )
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(build_config(tmp_path, collision_policy="append"), client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+
+    summary = importer.run_once()
+
+    target_dir = tmp_path / "target" / "2026" / "2026-04-02 Ostern"
+    assert (target_dir / "20260402_220546.mp4").exists()
+    assert not (target_dir / "20260402_220546_01.mp4").exists()
+    assert summary.assets_imported == 1
+    assert summary.assets_skipped == 1
+
+    second_record = state.get_asset_import("album-2", "asset-1")
+    assert second_record is not None
+    assert second_record.status == "skipped_existing_asset"
+
+    state.close()
+
+
+def test_importer_album_mode_allows_same_asset_id_in_different_albums(tmp_path: Path) -> None:
+    album_one = {
+        "id": "album-1",
+        "albumName": "2026-04-02 Ostern A",
+        "ownerId": "user-1",
+        "startDate": "2026-04-02T22:05:46Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "20260402_220546.mp4", "fileCreatedAt": "2026-04-02T22:05:46Z"},
+        ],
+    }
+    album_two = {
+        "id": "album-2",
+        "albumName": "2026-04-02 Ostern B",
+        "ownerId": "user-1",
+        "startDate": "2026-04-02T22:05:46Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "20260402_220546.mp4", "fileCreatedAt": "2026-04-02T22:05:46Z"},
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}, {"id": "album-2"}],
+        album_details={"album-1": album_one, "album-2": album_two},
+        downloads={"asset-1": b"video-content"},
+    )
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(
+        build_config(tmp_path, collision_policy="append", deduplication_mode="album"),
+        client,
+        state,
+        TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename),
+    )
+
+    summary = importer.run_once()
+
+    assert (tmp_path / "target" / "2026" / "2026-04-02 Ostern A" / "20260402_220546.mp4").exists()
+    assert (tmp_path / "target" / "2026" / "2026-04-02 Ostern B" / "20260402_220546.mp4").exists()
+    assert summary.assets_imported == 2
+    assert summary.assets_skipped == 0
+
+    state.close()
+
+
+def test_importer_none_mode_reimports_same_asset_on_second_run(tmp_path: Path) -> None:
+    album = {
+        "id": "album-1",
+        "albumName": "No Dedupe",
+        "ownerId": "user-1",
+        "startDate": "2026-04-02T22:05:46Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "20260402_220546.mp4", "fileCreatedAt": "2026-04-02T22:05:46Z"},
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}],
+        album_details={"album-1": album},
+        downloads={"asset-1": b"video-content"},
+    )
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(
+        build_config(tmp_path, collision_policy="append", deduplication_mode="none"),
+        client,
+        state,
+        TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename),
+    )
+
+    importer.run_once()
+    importer.run_once()
+
+    target_dir = tmp_path / "target" / "2026" / "2026-04-02 No Dedupe"
+    assert (target_dir / "20260402_220546.mp4").exists()
+    assert (target_dir / "20260402_220546_01.mp4").exists()
 
     state.close()
 

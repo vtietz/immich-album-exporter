@@ -1,0 +1,4 @@
+- Python codebase with explicit modules under src/immich_album_exporter.
+- Prefer clear, typed helper functions where appropriate; keep behavior conservative (avoid destructive operations).
+- Config-driven behavior via YAML + environment variable interpolation.
+- Filename/folder output derived from Jinja templates using date objects and suffix rules.

@@ -1,0 +1,7 @@
+- Start stack: ./run.sh up
+- Stop stack: ./run.sh down
+- One-shot sync: ./run.sh sync
+- Unit tests (container): ./run.sh unit-test
+- Full tests (container): ./run.sh test
+- Dev shell (container): ./run.sh dev-shell
+- Utility (Linux): git status, git diff, ls, rg, find, cd

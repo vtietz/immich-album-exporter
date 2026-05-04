@@ -35,6 +35,7 @@ behavior:
   collision_policy: append
   freeze_album_directory: true
   preserve_file_timestamps: true
+  deduplication_mode: global
   dry_run: false
 ```
 
@@ -277,6 +278,20 @@ Set the target file timestamps to the resolved asset timestamp.
 - Required: no
 - Type: boolean
 - Default: `true`
+
+### `behavior.deduplication_mode`
+
+Controls how aggressively the importer deduplicates by asset ID.
+
+- Required: no
+- Type: `global`, `album`, or `none`
+- Default: `global`
+
+Behavior:
+
+- `global`: import an asset ID only once across all albums
+- `album`: deduplicate only within the same album ID
+- `none`: disable asset-ID deduplication checks
 
 ### `behavior.dry_run`
 

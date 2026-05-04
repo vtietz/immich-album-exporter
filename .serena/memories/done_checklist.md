@@ -1,0 +1,3 @@
+- After changes, validate using Docker-only commands (no host venv/pip/pytest).
+- Prefer ./run.sh unit-test for quick verification.
+- If behavior/config changes, ensure README/docs/config examples remain consistent.

@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import mimetypes
+import re
 from typing import Any, Iterable
+
+
+ANDROID_TIMESTAMP_FILENAME_RE = re.compile(r"^(\d{8})_(\d{6})(?:\.[^.]+)?$", re.IGNORECASE)
 
 
 def _iter_candidates(asset: dict[str, Any], paths: Iterable[tuple[str, ...]]) -> Iterable[Any]:
@@ -36,7 +40,39 @@ def parse_datetime(value: str | datetime | None) -> datetime | None:
     return parsed.astimezone(local_tz) if parsed.tzinfo else parsed.replace(tzinfo=local_tz)
 
 
+def _parse_datetime_from_android_filename(filename: str | None) -> datetime | None:
+    if not filename:
+        return None
+
+    match = ANDROID_TIMESTAMP_FILENAME_RE.match(Path(filename).name)
+    if not match:
+        return None
+
+    date_part, time_part = match.groups()
+    try:
+        parsed = datetime.strptime(f"{date_part}_{time_part}", "%Y%m%d_%H%M%S")
+    except ValueError:
+        return None
+    return parse_datetime(parsed)
+
+
 def resolve_asset_date(asset: dict[str, Any]) -> datetime:
+    filename_candidate = next(
+        _iter_candidates(
+            asset,
+            [
+                ("originalFileName",),
+                ("fileName",),
+                ("filename",),
+                ("originalPath",),
+            ],
+        ),
+        None,
+    )
+    from_filename = _parse_datetime_from_android_filename(str(filename_candidate) if filename_candidate else None)
+    if from_filename:
+        return from_filename
+
     candidates = [
         ("exifInfo", "dateTimeOriginal"),
         ("exifInfo", "dateTimeDigitized"),

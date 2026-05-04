@@ -1,0 +1,3 @@
+- Purpose: Export Immich albums/assets to local folders with configurable templates while preserving metadata/timestamps and avoiding destructive actions.
+- Tech stack: Python 3.12 package (hatchling), httpx for API calls, Jinja2 templates, PyYAML config, SQLite state tracking.
+- Runtime model: Docker-first workflow via run.sh and docker compose.

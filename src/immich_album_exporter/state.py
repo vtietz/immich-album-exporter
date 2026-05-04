@@ -67,6 +67,21 @@ class StateStore:
             return None
         return AssetImportRecord(**dict(row))
 
+    def get_imported_asset_anywhere(self, asset_id: str) -> AssetImportRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT album_id, asset_id, target_relpath, status
+            FROM asset_imports
+            WHERE asset_id = ? AND status = 'imported' AND target_relpath IS NOT NULL
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (asset_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return AssetImportRecord(**dict(row))
+
     def save_asset_import(self, album_id: str, asset_id: str, target_relpath: str | None, status: str) -> None:
         self._connection.execute(
             """

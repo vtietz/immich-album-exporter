@@ -144,6 +144,12 @@ class AlbumImporter:
     def _import_asset(self, album: dict[str, Any], asset: dict[str, Any], album_directory: str) -> str:
         album_id = album["id"]
         asset_id = asset["id"]
+
+        if self._is_deleted_or_trashed_asset(asset):
+            logger.info("Skipping asset %s because it is marked deleted/trashed in Immich", asset_id)
+            self._state.save_asset_import(album_id, asset_id, None, "skipped_deleted_asset")
+            return "skipped"
+
         deduplication_mode = self._config.behavior.deduplication_mode
         record = self._state.get_asset_import(album_id, asset_id) if deduplication_mode != "none" else None
 
@@ -210,6 +216,17 @@ class AlbumImporter:
         self._state.save_asset_import(album_id, asset_id, final_relpath, "imported")
         logger.info("Imported asset %s -> %s", asset_id, target_path)
         return "imported"
+
+    def _is_deleted_or_trashed_asset(self, asset: dict[str, Any]) -> bool:
+        # Immich may still return soft-deleted assets in album payloads; requesting
+        # /assets/{id}/original for those can return HTTP 500.
+        if asset.get("isTrashed") is True:
+            return True
+
+        deleted_at = asset.get("deletedAt")
+        if deleted_at in (None, ""):
+            return False
+        return True
 
     def _resolve_target_path(
         self,

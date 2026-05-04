@@ -368,3 +368,39 @@ def test_importer_skips_asset_on_download_http_error(tmp_path: Path) -> None:
     assert record.status == "skipped_download_http_500"
 
     state.close()
+
+
+def test_importer_skips_deleted_asset_without_download(tmp_path: Path) -> None:
+    album = {
+        "id": "album-1",
+        "albumName": "Deleted Asset",
+        "ownerId": "user-1",
+        "startDate": "2026-01-24T09:15:04Z",
+        "assets": [
+            {
+                "id": "asset-deleted",
+                "originalFileName": "IMG_0001.JPG",
+                "fileCreatedAt": "2026-01-24T09:15:04Z",
+                "deletedAt": "2026-05-04T18:00:24Z",
+            },
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}],
+        album_details={"album-1": album},
+        downloads={},
+    )
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(build_config(tmp_path), client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+
+    summary = importer.run_once()
+
+    assert summary.assets_imported == 0
+    assert summary.assets_skipped == 1
+
+    record = state.get_asset_import("album-1", "asset-deleted")
+    assert record is not None
+    assert record.status == "skipped_deleted_asset"
+
+    state.close()

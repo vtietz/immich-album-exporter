@@ -8,6 +8,7 @@ import tempfile
 import time
 from typing import Any
 
+from croniter import croniter
 import httpx
 
 from .config import AppConfig
@@ -77,7 +78,20 @@ class AlbumImporter:
     def run_forever(self) -> None:
         while True:
             self.run_once()
-            time.sleep(self._config.poll.interval_seconds)
+            sleep_seconds = self._poll_delay_seconds()
+            logger.info("Next sync in %.1f seconds", sleep_seconds)
+            time.sleep(sleep_seconds)
+
+    def _poll_delay_seconds(self, now: datetime | None = None) -> float:
+        if self._config.poll.cron is not None:
+            reference = now or datetime.now().astimezone()
+            next_run = croniter(self._config.poll.cron, reference).get_next(datetime)
+            return max((next_run - reference).total_seconds(), 0.0)
+
+        if self._config.poll.interval_seconds is None:
+            raise ValueError("poll.interval_seconds is required when poll.cron is not configured")
+
+        return float(self._config.poll.interval_seconds)
 
     def _matches_user_filter(self, album: dict[str, Any]) -> bool:
         user_id = self._config.selection.user_id

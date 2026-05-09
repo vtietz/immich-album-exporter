@@ -58,6 +58,11 @@ selection:
   user_id: ${IMMICH_SELECTION_USER_ID:}
   start_date: ${IMMICH_SELECTION_START_DATE:}
 
+poll:
+  interval_seconds: 600
+  # Set interval_seconds: null and use cron for calendar-based schedules.
+  # cron: "*/10 * * * *"
+
 paths:
   target_root: /target
   state_db_path: /data/importer.db
@@ -78,6 +83,7 @@ Notes:
 - Use either `api_key` or `access_token`.
 - `user_id` is optional. If omitted, the importer works with whatever the authenticated account can see.
 - `start_date` is optional. If set, only albums with `createdAt` on or after that timestamp are exported. Use `YYYY-MM-DD` or a full ISO timestamp like `2026-01-01T00:00:00Z`.
+- Polling supports either fixed seconds (`poll.interval_seconds`) or cron syntax (`poll.cron`). Configure exactly one.
 - Folder and filename templates use Jinja2.
 - Timestamp-based filenames and preserved file timestamps follow the container timezone (`TZ`). Set `TZ` to your local zone (for example `Europe/Berlin`) to avoid hour offsets and unintended filename collisions.
 - `deduplication_mode` controls asset-ID dedupe scope: `global` (across all albums), `album` (within one album only), or `none` (disabled).

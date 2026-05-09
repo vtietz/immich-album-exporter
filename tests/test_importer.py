@@ -52,6 +52,30 @@ def build_config(tmp_path: Path, collision_policy: str = "append", deduplication
     )
 
 
+def test_poll_delay_seconds_uses_fixed_interval(tmp_path: Path) -> None:
+    client = FakeImmichClient(albums=[], album_details={}, downloads={})
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(build_config(tmp_path), client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+
+    assert importer._poll_delay_seconds() == 60.0
+
+    state.close()
+
+
+def test_poll_delay_seconds_uses_cron_expression(tmp_path: Path) -> None:
+    config = build_config(tmp_path)
+    config.poll = PollConfig(interval_seconds=None, cron="*/10 * * * *")
+
+    client = FakeImmichClient(albums=[], album_details={}, downloads={})
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(config, client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+
+    now = datetime(2026, 5, 9, 10, 3, 15, tzinfo=UTC)
+    assert importer._poll_delay_seconds(now=now) == 405.0
+
+    state.close()
+
+
 def test_importer_freezes_album_directory_after_rename(tmp_path: Path) -> None:
     first_album = {
         "id": "album-1",

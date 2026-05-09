@@ -7,6 +7,7 @@ import os
 import re
 from typing import Any, Literal, cast
 
+from croniter import CroniterBadCronError, croniter
 import yaml
 
 from .metadata import parse_datetime
@@ -77,7 +78,27 @@ class SelectionConfig:
 
 @dataclass(slots=True)
 class PollConfig:
-    interval_seconds: int = 600
+    interval_seconds: int | None = 600
+    cron: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.cron is not None:
+            self.cron = self.cron.strip() or None
+
+        if self.interval_seconds is not None and self.interval_seconds <= 0:
+            raise ValueError("poll.interval_seconds must be greater than 0")
+
+        if self.interval_seconds is not None and self.cron is not None:
+            raise ValueError("Configure only one of poll.interval_seconds or poll.cron")
+
+        if self.interval_seconds is None and self.cron is None:
+            raise ValueError("Configure either poll.interval_seconds or poll.cron")
+
+        if self.cron is not None:
+            try:
+                croniter(self.cron, datetime.now().astimezone())
+            except (CroniterBadCronError, ValueError) as error:
+                raise ValueError(f"Invalid poll.cron expression: {self.cron!r}") from error
 
 
 @dataclass(slots=True)
@@ -116,6 +137,7 @@ def load_config(path: str | Path) -> AppConfig:
     expanded = _expand_env(raw)
 
     immich_raw = expanded.get("immich", {})
+    poll_raw = expanded.get("poll", {})
     api_key = immich_raw.get("api_key") or None
     access_token = immich_raw.get("access_token") or None
 
@@ -137,7 +159,12 @@ def load_config(path: str | Path) -> AppConfig:
             exclude_album_ids=list(expanded.get("selection", {}).get("exclude_album_ids", [])),
         ),
         poll=PollConfig(
-            interval_seconds=int(expanded.get("poll", {}).get("interval_seconds", 600)),
+            interval_seconds=(
+                int(poll_raw["interval_seconds"])
+                if "interval_seconds" in poll_raw and poll_raw.get("interval_seconds") is not None
+                else (None if "interval_seconds" in poll_raw else 600)
+            ),
+            cron=poll_raw.get("cron"),
         ),
         paths=PathsConfig(
             target_root=Path(expanded.get("paths", {}).get("target_root", "/target")),

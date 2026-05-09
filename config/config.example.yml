@@ -13,6 +13,8 @@ selection:
 
 poll:
   interval_seconds: 600
+  # For calendar-based scheduling, set interval_seconds: null and define cron instead.
+  # cron: "*/10 * * * *"
 
 paths:
   target_root: /target

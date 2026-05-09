@@ -22,6 +22,8 @@ selection:
 
 poll:
   interval_seconds: 600
+  # To use cron scheduling instead, set interval_seconds: null and uncomment cron.
+  # cron: "*/10 * * * *"
 
 paths:
   target_root: /target
@@ -172,6 +174,28 @@ Polling interval for worker mode.
 - Default: `600`
 
 Used only by the long-running worker. It does not affect `sync-once` mode.
+
+Set this to `null` when using `poll.cron`.
+
+### `poll.cron`
+
+Cron expression for worker mode scheduling.
+
+- Required: no
+- Type: string (cron expression)
+- Default: empty
+
+Examples:
+
+- `*/10 * * * *` (every 10 minutes)
+- `0 * * * *` (hourly)
+- `0 2 * * *` (daily at 02:00)
+
+Notes:
+
+- Configure exactly one of `poll.interval_seconds` or `poll.cron`.
+- Cron scheduling follows the container timezone (`TZ`).
+- If a sync run takes longer than one cron window, missed windows are skipped and the next future run is used.
 
 ## paths
 

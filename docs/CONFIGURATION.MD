@@ -38,6 +38,8 @@ behavior:
   freeze_album_directory: true
   preserve_file_timestamps: true
   deduplication_mode: global
+  ignored_album_patterns:
+    - "#*"
   dry_run: false
 ```
 
@@ -316,6 +318,18 @@ Behavior:
 - `global`: import an asset ID only once across all albums
 - `album`: deduplicate only within the same album ID
 - `none`: disable asset-ID deduplication checks
+
+### `behavior.ignored_album_patterns`
+
+Album-name patterns to skip before import.
+
+- Required: no
+- Type: list of strings (shell-style patterns)
+- Default: `["#*"]`
+
+Patterns are matched against album names using shell-style matching (for example `#*`, `Private*`, `*_tmp`).
+
+By default, albums whose names start with `#` are ignored.
 
 ### `behavior.dry_run`
 

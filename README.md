@@ -76,6 +76,8 @@ behavior:
   freeze_album_directory: true
   preserve_file_timestamps: true
   deduplication_mode: global
+  ignored_album_patterns:
+    - "#*"
 ```
 
 Notes:
@@ -87,6 +89,7 @@ Notes:
 - Folder and filename templates use Jinja2.
 - Timestamp-based filenames and preserved file timestamps follow the container timezone (`TZ`). Set `TZ` to your local zone (for example `Europe/Berlin`) to avoid hour offsets and unintended filename collisions.
 - `deduplication_mode` controls asset-ID dedupe scope: `global` (across all albums), `album` (within one album only), or `none` (disabled).
+- `ignored_album_patterns` is a list of shell-style patterns for album names to skip. Default is `[#*]`, which skips albums starting with `#`.
 
 ### Create an Immich API Key
 

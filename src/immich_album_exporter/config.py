@@ -59,6 +59,23 @@ def _parse_deduplication_mode(mode_value: Any) -> DeduplicationMode:
     return "global"
 
 
+def _parse_string_list(value: Any, field_name: str, default: list[str] | None = None) -> list[str]:
+    if value is None:
+        return list(default or [])
+
+    if isinstance(value, list):
+        parsed: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError(f"Invalid {field_name}: all entries must be strings")
+            normalized = item.strip()
+            if normalized:
+                parsed.append(normalized)
+        return parsed
+
+    raise ValueError(f"Invalid {field_name}: expected a list of strings")
+
+
 @dataclass(slots=True)
 class ImmichConfig:
     base_url: str
@@ -119,6 +136,7 @@ class BehaviorConfig:
     freeze_album_directory: bool = True
     preserve_file_timestamps: bool = True
     deduplication_mode: DeduplicationMode = "global"
+    ignored_album_patterns: list[str] = field(default_factory=lambda: ["#*"])
     dry_run: bool = False
 
 
@@ -155,8 +173,14 @@ def load_config(path: str | Path) -> AppConfig:
             mode=expanded.get("selection", {}).get("mode", "owned_or_shared"),
             user_id=expanded.get("selection", {}).get("user_id") or None,
             start_date=parse_datetime(expanded.get("selection", {}).get("start_date")),
-            include_album_ids=list(expanded.get("selection", {}).get("include_album_ids", [])),
-            exclude_album_ids=list(expanded.get("selection", {}).get("exclude_album_ids", [])),
+            include_album_ids=_parse_string_list(
+                expanded.get("selection", {}).get("include_album_ids"),
+                "selection.include_album_ids",
+            ),
+            exclude_album_ids=_parse_string_list(
+                expanded.get("selection", {}).get("exclude_album_ids"),
+                "selection.exclude_album_ids",
+            ),
         ),
         poll=PollConfig(
             interval_seconds=(
@@ -179,6 +203,11 @@ def load_config(path: str | Path) -> AppConfig:
             collision_policy=expanded.get("behavior", {}).get("collision_policy", "append"),
             freeze_album_directory=_as_bool(expanded.get("behavior", {}).get("freeze_album_directory"), True),
             preserve_file_timestamps=_as_bool(expanded.get("behavior", {}).get("preserve_file_timestamps"), True),
+            ignored_album_patterns=_parse_string_list(
+                expanded.get("behavior", {}).get("ignored_album_patterns"),
+                "behavior.ignored_album_patterns",
+                default=["#*"],
+            ),
             dry_run=_as_bool(expanded.get("behavior", {}).get("dry_run"), False),
         ),
     )

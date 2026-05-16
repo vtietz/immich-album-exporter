@@ -29,4 +29,6 @@ behavior:
   freeze_album_directory: true
   preserve_file_timestamps: true
   deduplication_mode: global # global | album | none
+  ignored_album_patterns:
+    - "#*"
   dry_run: false

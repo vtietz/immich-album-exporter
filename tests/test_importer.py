@@ -41,14 +41,23 @@ class FakeImmichClient:
         destination.write_bytes(self._downloads[asset_id])
 
 
-def build_config(tmp_path: Path, collision_policy: str = "append", deduplication_mode: str = "global") -> AppConfig:
+def build_config(
+    tmp_path: Path,
+    collision_policy: str = "append",
+    deduplication_mode: str = "global",
+    ignored_album_patterns: list[str] | None = None,
+) -> AppConfig:
     return AppConfig(
         immich=ImmichConfig(base_url="http://unused", api_key="secret"),
         selection=SelectionConfig(mode="owned_or_shared"),
         poll=PollConfig(interval_seconds=60),
         paths=PathsConfig(target_root=tmp_path / "target", state_db_path=tmp_path / "state.db"),
         templates=TemplateConfig(),
-        behavior=BehaviorConfig(collision_policy=collision_policy, deduplication_mode=deduplication_mode),
+        behavior=BehaviorConfig(
+            collision_policy=collision_policy,
+            deduplication_mode=deduplication_mode,
+            ignored_album_patterns=(ignored_album_patterns if ignored_album_patterns is not None else ["#*"]),
+        ),
     )
 
 
@@ -402,5 +411,76 @@ def test_importer_skips_deleted_asset_without_download(tmp_path: Path) -> None:
     record = state.get_asset_import("album-1", "asset-deleted")
     assert record is not None
     assert record.status == "skipped_deleted_asset"
+
+    state.close()
+
+
+def test_importer_ignores_albums_matching_default_hash_pattern(tmp_path: Path) -> None:
+    ignored_album = {
+        "id": "album-1",
+        "albumName": "#Private",
+        "ownerId": "user-1",
+        "startDate": "2026-01-24T09:15:04Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "IMG_0001.JPG", "fileCreatedAt": "2026-01-24T09:15:04Z"},
+        ],
+    }
+    visible_album = {
+        "id": "album-2",
+        "albumName": "Public Album",
+        "ownerId": "user-1",
+        "startDate": "2026-01-24T09:15:04Z",
+        "assets": [
+            {"id": "asset-2", "originalFileName": "IMG_0002.JPG", "fileCreatedAt": "2026-01-24T09:16:04Z"},
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}, {"id": "album-2"}],
+        album_details={"album-1": ignored_album, "album-2": visible_album},
+        downloads={"asset-1": b"ignored", "asset-2": b"visible"},
+    )
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(build_config(tmp_path), client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+
+    summary = importer.run_once()
+
+    assert summary.albums_seen == 1
+    assert summary.assets_imported == 1
+    assert not (tmp_path / "target" / "2026" / "2026-01-24 #Private").exists()
+    assert (tmp_path / "target" / "2026" / "2026-01-24 Public Album" / "20260124_091604.jpg").exists()
+
+    state.close()
+
+
+def test_importer_processes_hash_album_when_ignored_patterns_empty(tmp_path: Path) -> None:
+    album = {
+        "id": "album-1",
+        "albumName": "#Private",
+        "ownerId": "user-1",
+        "startDate": "2026-01-24T09:15:04Z",
+        "assets": [
+            {"id": "asset-1", "originalFileName": "IMG_0001.JPG", "fileCreatedAt": "2026-01-24T09:15:04Z"},
+        ],
+    }
+
+    client = FakeImmichClient(
+        albums=[{"id": "album-1"}],
+        album_details={"album-1": album},
+        downloads={"asset-1": b"included"},
+    )
+    state = StateStore(tmp_path / "state.db")
+    importer = AlbumImporter(
+        build_config(tmp_path, ignored_album_patterns=[]),
+        client,
+        state,
+        TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename),
+    )
+
+    summary = importer.run_once()
+
+    assert summary.albums_seen == 1
+    assert summary.assets_imported == 1
+    assert (tmp_path / "target" / "2026" / "2026-01-24 #Private" / "20260124_091504.jpg").exists()
 
     state.close()

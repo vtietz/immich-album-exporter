@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from fnmatch import fnmatch
 import logging
 from pathlib import Path
 import tempfile
@@ -49,6 +50,8 @@ class AlbumImporter:
                 continue
 
             album = self._client.get_album(album_id)
+            if self._matches_ignored_album_patterns(album):
+                continue
             if not self._matches_user_filter(album):
                 continue
             if not self._matches_start_date_filter(album):
@@ -122,6 +125,20 @@ class AlbumImporter:
             return False
 
         return album_created_at >= selection_start_date
+
+    def _matches_ignored_album_patterns(self, album: dict[str, Any]) -> bool:
+        patterns = self._config.behavior.ignored_album_patterns
+        if not patterns:
+            return False
+
+        album_id = album.get("id")
+        album_name = str(album.get("albumName") or album.get("name") or album_id or "")
+        for pattern in patterns:
+            if fnmatch(album_name, pattern):
+                logger.info("Skipping album %s (%s) due to ignored pattern %r", album_id, album_name, pattern)
+                return True
+
+        return False
 
     def _resolve_album_directory(self, album: dict[str, Any]) -> str:
         album_id = album["id"]

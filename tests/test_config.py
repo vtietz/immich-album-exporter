@@ -93,3 +93,44 @@ poll:
 
     with pytest.raises(ValueError, match="greater than 0"):
         load_config(config_path)
+
+
+def test_load_config_defaults_ignored_album_patterns_to_hash_prefix(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path, _minimal_immich_block())
+
+    config = load_config(config_path)
+
+    assert config.behavior.ignored_album_patterns == ["#*"]
+
+
+def test_load_config_accepts_behavior_ignored_album_patterns_list(tmp_path: Path) -> None:
+    content = (
+        _minimal_immich_block()
+        + """
+
+behavior:
+  ignored_album_patterns:
+    - "#*"
+    - "Private*"
+"""
+    )
+    config_path = _write_config(tmp_path, content)
+
+    config = load_config(config_path)
+
+    assert config.behavior.ignored_album_patterns == ["#*", "Private*"]
+
+
+def test_load_config_rejects_non_list_ignored_album_patterns(tmp_path: Path) -> None:
+    content = (
+        _minimal_immich_block()
+        + """
+
+behavior:
+  ignored_album_patterns: "#*"
+"""
+    )
+    config_path = _write_config(tmp_path, content)
+
+    with pytest.raises(ValueError, match="behavior.ignored_album_patterns"):
+        load_config(config_path)

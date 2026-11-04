@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly regression run against the pinned Immich versions.
+    - cron: "0 3 * * 1"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run unit tests (dev container)
+        run: ./run.sh unit-test
+
+      - name: Run unit tests (runtime image)
+        run: ./run.sh image-test
+
+  e2e:
+    name: E2E (Immich ${{ matrix.immich-version }})
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        immich-version: ["v3.1.0", "v2.7.5"]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run end-to-end tests
+        env:
+          IMMICH_VERSION: ${{ matrix.immich-version }}
+        run: ./run.sh test
+
+  publish:
+    name: Publish image
+    if: github.event_name == 'push'
+    needs: [unit-test, e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=tag
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          target: runtime
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

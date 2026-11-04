@@ -287,12 +287,10 @@ The test wrapper downloads the official Immich Docker Compose file for `IMMICH_V
 
 ## GitHub Container Build
 
-This repository includes a modular GitHub Actions setup with a top-level CI workflow and reusable workflows for unit tests, end-to-end tests, and package publishing.
+A single workflow, [.github/workflows/ci.yml](.github/workflows/ci.yml) (`CI`), runs three jobs:
 
-The CI pipeline has three stages:
-
-- unit tests on every push and pull request
-- real Immich end-to-end tests on pushes, manual runs, and nightly schedule
-- package publishing to GitHub Container Registry after the tests pass on push
+- **Unit tests**: on every push and pull request, in the dev container and against the runtime image
+- **E2E**: real Immich end-to-end tests against v3.1.0 and v2.7.5, on pushes, manual runs and a weekly schedule
+- **Publish image**: pushes the image to GitHub Container Registry after the tests pass on a push
 
 The package is published to `ghcr.io/vtietz/immich-album-exporter`. 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "immich-album-exporter"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Dockerized importer that mirrors Immich albums into a templated local folder structure."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -28,6 +28,9 @@ dev = [
 
 [project.scripts]
 immich-album-exporter = "immich_album_exporter.__main__:main"
+
+[tool.hatch.version]
+path = "src/immich_album_exporter/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/immich_album_exporter"]

@@ -293,4 +293,16 @@ A single workflow, [.github/workflows/ci.yml](.github/workflows/ci.yml) (`CI`), 
 - **E2E**: real Immich end-to-end tests against v3.3.5 and v2.7.5, on pushes, manual runs and a weekly schedule
 - **Publish image**: pushes the image to GitHub Container Registry after the tests pass on a push
 
-The package is published to `ghcr.io/vtietz/immich-album-exporter`. 
+The package is published to `ghcr.io/vtietz/immich-album-exporter` with these tags:
+
+- `latest`: the current `main` branch
+- `0.2.0` / `v0.2.0`: an exact [release](https://github.com/vtietz/immich-album-exporter/releases)
+- `0.2`: the latest patch release of that minor version
+
+For unattended setups, pin a release instead of `latest` by setting `IMMICH_ALBUM_EXPORTER_IMAGE=ghcr.io/vtietz/immich-album-exporter:0.2` in `.env`. Check the release notes before upgrading.
+
+### Creating a release
+
+1. Bump `__version__` in [src/immich_album_exporter/__init__.py](src/immich_album_exporter/__init__.py) and push to `main`.
+2. Run `gh release create vX.Y.Z --title vX.Y.Z --notes "..."` (or `--generate-notes`). The tag triggers CI, which publishes the versioned image after the tests pass.
+

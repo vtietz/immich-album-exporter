@@ -16,3 +16,6 @@ jobs:
         run: |
           chmod +x ./run.sh
           ./run.sh unit-test
+
+      - name: Run unit tests against the runtime image
+        run: ./run.sh image-test

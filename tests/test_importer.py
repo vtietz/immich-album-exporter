@@ -33,6 +33,9 @@ class FakeImmichClient:
     def get_album(self, album_id: str) -> dict:
         return self._album_details[album_id]
 
+    def get_album_assets(self, album: dict) -> list[dict]:
+        return list(album.get("assets", []))
+
     def download_asset(self, asset_id: str, destination: Path) -> None:
         if asset_id in self._failed_downloads:
             request = httpx.Request("GET", f"http://unused/assets/{asset_id}/original")

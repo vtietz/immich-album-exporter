@@ -14,6 +14,14 @@ Exports albums owned by or shared with a configured Immich user into a local fol
 - Never deletes assets in Immich or in the target library.
 - Never overwrites by default. Collisions can be configured to append, skip, or overwrite.
 
+## Immich Compatibility
+
+Tested against Immich `v3.1.0` and `v2.7.5` (see `./run.sh test` below).
+
+- Immich v3 no longer embeds the asset list in `GET /api/albums/{id}`. The exporter enumerates album assets page by page through `POST /api/search/metadata` and checks the result against the album's `assetCount`. Older servers that still embed assets keep using the embedded list.
+- The enumerated set matches the previous behaviour exactly: timeline and archived assets, not trashed, not hidden (live-photo video parts), and not locked. Stacked assets are included.
+- If an album cannot be enumerated completely (missing permission, HTTP or network error, malformed response, pagination problem, or a count that stays inconsistent after 3 attempts because the album keeps changing), that album is reported as failed, nothing is written for it, and the other albums continue. `sync-once` then exits with status `1`. The worker logs the error and retries on its next scheduled run.
+
 ## Default Layout
 
 The default folder template is:
@@ -107,10 +115,13 @@ Create the key in the Immich web UI:
 6. Select only the permissions the exporter needs.
 7. Copy the secret immediately and store it as `IMMICH_API_KEY` in `.env` or directly in `config/config.yml`.
 
-Recommended minimum permissions for this project:
+Required permissions for this project:
 
-- `album.read`
-- `asset.download`
+- `album.read` — list albums and read album details
+- `asset.read` — enumerate the assets of an album (`POST /api/search/metadata`); required since Immich v3, which no longer embeds assets in album responses
+- `asset.download` — download original files
+
+Upgrading from an earlier release: an existing key with only `album.read` and `asset.download` must additionally be granted `asset.read` when the server runs Immich v3. Without it every populated album is reported as failed (`HTTP 403 ... asset.read`) and nothing is exported; it is never treated as an empty album.
 
 Not required for this exporter:
 
@@ -120,7 +131,7 @@ Not required for this exporter:
 - any `admin*` permission
 - `apiKey.*` permissions for runtime use
 
-If you prefer not to manage fine-grained scopes at first, Immich also allows creating a broader key, but this project should work with the two permissions above because it only lists albums, reads album details, and downloads original assets.
+If you prefer not to manage fine-grained scopes at first, Immich also allows creating a broader key, but this project works with the three permissions above because it only lists albums, reads album details and asset metadata, and downloads original assets. It never needs write, delete, or admin permissions.
 
 ## Docker Usage
 
@@ -252,13 +263,27 @@ Use `PUID` and `PGID` in `.env` so written files match the host user permissions
 ./run.sh unit-test
 ```
 
+### Unit tests against the runtime image
+
+```bash
+./run.sh image-test
+```
+
+Builds the production (`runtime`) image and runs the unit suite against the package installed in it (no source mount), so the shipped module itself is tested.
+
 ### End-to-end test with a real Immich server
 
 ```bash
-./run.sh test
+./run.sh test                         # Immich v3.1.0 (default)
+IMMICH_VERSION=v2.7.5 ./run.sh test   # legacy API generation
 ```
 
-The test wrapper downloads the current official Immich Docker Compose stack into `.tmp/e2e/immich`, boots it, seeds users and generated demo image and video assets through the Immich API, runs the exporter, renames the album, uploads a second video asset, and verifies that the original target folder mapping remains frozen.
+The test wrapper downloads the official Immich Docker Compose file for `IMMICH_VERSION` into `.tmp/e2e/immich` and boots it. It then seeds users and generated image and video assets through the Immich API and runs the installed exporter against that server. It verifies that:
+
+- after an album rename and a newly uploaded video, the original target folder mapping stays frozen;
+- a shared album with 1,001 assets is exported completely with an API key limited to `album.read`, `asset.read` and `asset.download`, and a second run imports nothing;
+- on Immich v3, a key without `asset.read` makes the run fail instead of reporting an empty album;
+- `owned` mode does not pick up albums that are only shared with the user.
 
 ## GitHub Container Build
 

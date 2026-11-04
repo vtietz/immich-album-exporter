@@ -66,12 +66,13 @@ Immich API key used for authentication.
 
 Immich API keys are user-scoped. The key belongs to the user account that created it, so the exporter can only access albums and assets visible to that account.
 
-Recommended permissions for this exporter:
+Required permissions for this exporter:
 
-- `album.read`
-- `asset.download`
+- `album.read`: list albums and read album details
+- `asset.read`: enumerate album assets via `POST /api/search/metadata`; required for Immich v3, which no longer embeds assets in album responses
+- `asset.download`: download original files
 
-The exporter does not need write or admin permissions.
+The exporter does not need write, delete, or admin permissions. If `asset.read` is missing on Immich v3, populated albums are reported as failed (never as empty) and `sync-once` exits with status `1`.
 
 In normal setups, use an API key and leave `immich.access_token` empty.
 
@@ -112,6 +113,8 @@ Behavior:
 - `owned`: export albums owned by the configured user
 - `shared`: export albums shared with the configured user
 - `owned_or_shared`: export both
+
+These semantics are the same on Immich v2 and v3. On v3 the album list is requested with `isOwned`/`isShared`, because v3 ignores the older `shared` query parameter. Album owners and members are read from either response shape: v2 `ownerId`, or the v3 `albumUsers` entry with role `owner`. When `selection.user_id` is set and an album's owner cannot be determined, that album is reported as failed rather than included.
 
 ### `selection.user_id`
 

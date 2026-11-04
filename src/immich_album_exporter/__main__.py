@@ -27,7 +27,10 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.command == "sync-once":
-            importer.run_once()
+            summary = importer.run_once()
+            if not summary.succeeded:
+                # Album enumeration failures must not look like a successful (empty) run.
+                return 1
         else:
             importer.run_forever()
     finally:

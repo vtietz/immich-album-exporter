@@ -13,7 +13,7 @@ from croniter import croniter
 import httpx
 
 from .config import AppConfig
-from .immich_client import ImmichClient
+from .immich_client import AlbumEnumerationError, AlbumIdentityError, ImmichClient, album_member_ids, album_owner_id
 from .metadata import parse_datetime, resolve_album_date, resolve_asset_date, resolve_extension, resolve_original_filename
 from .state import AssetImportRecord, StateStore
 from .template import TemplateRenderer
@@ -28,6 +28,11 @@ class SyncSummary:
     assets_imported: int = 0
     assets_skipped: int = 0
     assets_conflicted: int = 0
+    albums_failed: int = 0
+
+    @property
+    def succeeded(self) -> bool:
+        return self.albums_failed == 0
 
 
 class AlbumImporter:
@@ -49,18 +54,27 @@ class AlbumImporter:
             if album_id in self._config.selection.exclude_album_ids:
                 continue
 
-            album = self._client.get_album(album_id)
-            if self._matches_ignored_album_patterns(album):
-                continue
-            if not self._matches_user_filter(album):
-                continue
-            if not self._matches_start_date_filter(album):
+            try:
+                album = self._client.get_album(album_id)
+                if self._matches_ignored_album_patterns(album):
+                    continue
+                if not self._matches_user_filter(album):
+                    continue
+                if not self._matches_start_date_filter(album):
+                    continue
+
+                # Enumerate completely before touching state or the target, so a
+                # failed or partial enumeration never looks like an empty album.
+                assets = self._client.get_album_assets(album)
+            except (AlbumEnumerationError, httpx.HTTPError) as error:
+                summary.albums_failed += 1
+                logger.error("Failed to enumerate album %s: %s", album_id, _describe_error(error))
                 continue
 
             summary.albums_seen += 1
             album_directory = self._resolve_album_directory(album)
 
-            for asset in album.get("assets", []):
+            for asset in assets:
                 result = self._import_asset(album, asset, album_directory)
                 if result == "imported":
                     summary.assets_imported += 1
@@ -69,12 +83,15 @@ class AlbumImporter:
                 else:
                     summary.assets_skipped += 1
 
-        logger.info(
-            "Sync finished: albums=%s imported=%s skipped=%s conflicted=%s",
+        log = logger.info if summary.succeeded else logger.error
+        log(
+            "Sync %s: albums=%s imported=%s skipped=%s conflicted=%s failed_albums=%s",
+            "finished" if summary.succeeded else "finished with errors",
             summary.albums_seen,
             summary.assets_imported,
             summary.assets_skipped,
             summary.assets_conflicted,
+            summary.albums_failed,
         )
         return summary
 
@@ -102,8 +119,13 @@ class AlbumImporter:
             return True
 
         mode = self._config.selection.mode
-        owner_id = album.get("ownerId")
-        member_ids = {user.get("userId") for user in album.get("albumUsers", [])}
+        owner_id = album_owner_id(album)
+        if owner_id is None:
+            # Never widen the selection when the owner cannot be established.
+            raise AlbumIdentityError(
+                f"Album {album.get('id')} has no recognizable owner; cannot apply selection.user_id"
+            )
+        member_ids = album_member_ids(album)
 
         if mode == "owned":
             return owner_id == user_id
@@ -316,6 +338,16 @@ class AlbumImporter:
         finally:
             if temporary_path.exists():
                 temporary_path.unlink(missing_ok=True)
+
+
+def _describe_error(error: Exception) -> str:
+    if isinstance(error, httpx.HTTPStatusError):
+        status = error.response.status_code
+        hint = ""
+        if status in {401, 403}:
+            hint = " (check the API key and its permissions: album.read, asset.read, asset.download)"
+        return f"Immich returned HTTP {status} for {error.request.method} {error.request.url.path}{hint}"
+    return str(error) or error.__class__.__name__
 
 
 def build_importer(config: AppConfig) -> tuple[AlbumImporter, ImmichClient, StateStore]:

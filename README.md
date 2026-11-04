@@ -16,7 +16,7 @@ Exports albums owned by or shared with a configured Immich user into a local fol
 
 ## Immich Compatibility
 
-Tested against Immich `v3.1.0` and `v2.7.5` (see `./run.sh test` below).
+Tested against Immich `v3.3.5` and `v2.7.5` in CI (see `./run.sh test` below), and additionally verified with `v3.1.0`.
 
 - Immich v3 no longer embeds the asset list in `GET /api/albums/{id}`. The exporter enumerates album assets page by page through `POST /api/search/metadata` and checks the result against the album's `assetCount`. Older servers that still embed assets keep using the embedded list.
 - The enumerated set matches the previous behaviour exactly: timeline and archived assets, not trashed, not hidden (live-photo video parts), and not locked. Stacked assets are included.
@@ -274,7 +274,7 @@ Builds the production (`runtime`) image and runs the unit suite against the pack
 ### End-to-end test with a real Immich server
 
 ```bash
-./run.sh test                         # Immich v3.1.0 (default)
+./run.sh test                         # Immich v3.3.5 (default)
 IMMICH_VERSION=v2.7.5 ./run.sh test   # legacy API generation
 ```
 
@@ -290,7 +290,7 @@ The test wrapper downloads the official Immich Docker Compose file for `IMMICH_V
 A single workflow, [.github/workflows/ci.yml](.github/workflows/ci.yml) (`CI`), runs three jobs:
 
 - **Unit tests**: on every push and pull request, in the dev container and against the runtime image
-- **E2E**: real Immich end-to-end tests against v3.1.0 and v2.7.5, on pushes, manual runs and a weekly schedule
+- **E2E**: real Immich end-to-end tests against v3.3.5 and v2.7.5, on pushes, manual runs and a weekly schedule
 - **Publish image**: pushes the image to GitHub Container Registry after the tests pass on a push
 
 The package is published to `ghcr.io/vtietz/immich-album-exporter`. 

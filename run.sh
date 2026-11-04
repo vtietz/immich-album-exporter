@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 E2E_DIR="$ROOT_DIR/.tmp/e2e/immich"
 # Immich release used by the real-server end-to-end test. Use an exact release tag
-# (e.g. v3.1.0 or v2.7.5): the matching docker-compose.yml is downloaded for it.
-IMMICH_VERSION="${IMMICH_VERSION:-v3.1.0}"
+# (e.g. v3.3.5 or v2.7.5): the matching docker-compose.yml is downloaded for it.
+IMMICH_VERSION="${IMMICH_VERSION:-v3.3.5}"
 
 ensure_dirs() {
   mkdir -p "$ROOT_DIR/config" "$ROOT_DIR/data" "$ROOT_DIR/target" "$ROOT_DIR/.tmp/e2e"
@@ -127,7 +127,7 @@ Commands:
   unit-test  Run pytest inside the dev container
   image-test Run the unit tests against the package installed in the runtime image
   dev-shell  Open a shell inside the dev container with the repo mounted
-  test       Start a real Immich stack (IMMICH_VERSION, default v3.1.0) and run end-to-end tests
+  test       Start a real Immich stack (IMMICH_VERSION, default v3.3.5) and run end-to-end tests
   prod-up    Start using the configured production image
   prod-down  Stop the production stack
 EOF

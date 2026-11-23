@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from fnmatch import fnmatch
 import logging
+import os
 from pathlib import Path
 import tempfile
 import time
@@ -12,7 +13,7 @@ from typing import Any
 from croniter import croniter
 import httpx
 
-from .config import AppConfig
+from .config import AppConfig, PollConfig
 from .immich_client import AlbumEnumerationError, AlbumIdentityError, ImmichClient, album_member_ids, album_owner_id
 from .metadata import parse_datetime, resolve_album_date, resolve_asset_date, resolve_extension, resolve_original_filename
 from .state import AssetImportRecord, StateStore
@@ -35,12 +36,40 @@ class SyncSummary:
         return self.albums_failed == 0
 
 
+class _ProfileLogger(logging.LoggerAdapter):
+    """Prefixes log lines with the user name in multi-user mode."""
+
+    def __init__(self, base: logging.Logger, name: str | None) -> None:
+        super().__init__(base, {})
+        self._prefix = f"[{name}] " if name else ""
+
+    def process(self, msg: Any, kwargs: Any) -> tuple[Any, Any]:
+        return f"{self._prefix}{msg}", kwargs
+
+
+def poll_delay_seconds(poll: PollConfig, now: datetime | None = None) -> float:
+    if poll.cron is not None:
+        reference = now or datetime.now().astimezone()
+        next_run = croniter(poll.cron, reference).get_next(datetime)
+        return max((next_run - reference).total_seconds(), 0.0)
+
+    if poll.interval_seconds is None:
+        raise ValueError("poll.interval_seconds is required when poll.cron is not configured")
+
+    return float(poll.interval_seconds)
+
+
 class AlbumImporter:
     def __init__(self, config: AppConfig, client: ImmichClient, state: StateStore, renderer: TemplateRenderer) -> None:
         self._config = config
         self._client = client
         self._state = state
         self._renderer = renderer
+        self._log = _ProfileLogger(logger, config.name)
+
+    @property
+    def name(self) -> str | None:
+        return self._config.name
 
     def run_once(self) -> SyncSummary:
         summary = SyncSummary()
@@ -68,7 +97,7 @@ class AlbumImporter:
                 assets = self._client.get_album_assets(album)
             except (AlbumEnumerationError, httpx.HTTPError) as error:
                 summary.albums_failed += 1
-                logger.error("Failed to enumerate album %s: %s", album_id, _describe_error(error))
+                self._log.error("Failed to enumerate album %s: %s", album_id, _describe_error(error))
                 continue
 
             summary.albums_seen += 1
@@ -83,7 +112,7 @@ class AlbumImporter:
                 else:
                     summary.assets_skipped += 1
 
-        log = logger.info if summary.succeeded else logger.error
+        log = self._log.info if summary.succeeded else self._log.error
         log(
             "Sync %s: albums=%s imported=%s skipped=%s conflicted=%s failed_albums=%s",
             "finished" if summary.succeeded else "finished with errors",
@@ -99,19 +128,11 @@ class AlbumImporter:
         while True:
             self.run_once()
             sleep_seconds = self._poll_delay_seconds()
-            logger.info("Next sync in %.1f seconds", sleep_seconds)
+            self._log.info("Next sync in %.1f seconds", sleep_seconds)
             time.sleep(sleep_seconds)
 
     def _poll_delay_seconds(self, now: datetime | None = None) -> float:
-        if self._config.poll.cron is not None:
-            reference = now or datetime.now().astimezone()
-            next_run = croniter(self._config.poll.cron, reference).get_next(datetime)
-            return max((next_run - reference).total_seconds(), 0.0)
-
-        if self._config.poll.interval_seconds is None:
-            raise ValueError("poll.interval_seconds is required when poll.cron is not configured")
-
-        return float(self._config.poll.interval_seconds)
+        return poll_delay_seconds(self._config.poll, now)
 
     def _matches_user_filter(self, album: dict[str, Any]) -> bool:
         user_id = self._config.selection.user_id
@@ -140,7 +161,7 @@ class AlbumImporter:
 
         album_created_at = parse_datetime(album.get("createdAt"))
         if album_created_at is None:
-            logger.info(
+            self._log.info(
                 "Skipping album %s because createdAt is missing and selection.start_date is configured",
                 album.get("id"),
             )
@@ -157,7 +178,7 @@ class AlbumImporter:
         album_name = str(album.get("albumName") or album.get("name") or album_id or "")
         for pattern in patterns:
             if fnmatch(album_name, pattern):
-                logger.info("Skipping album %s (%s) due to ignored pattern %r", album_id, album_name, pattern)
+                self._log.info("Skipping album %s (%s) due to ignored pattern %r", album_id, album_name, pattern)
                 return True
 
         return False
@@ -185,7 +206,7 @@ class AlbumImporter:
         asset_id = asset["id"]
 
         if self._is_deleted_or_trashed_asset(asset):
-            logger.info("Skipping asset %s because it is marked deleted/trashed in Immich", asset_id)
+            self._log.info("Skipping asset %s because it is marked deleted/trashed in Immich", asset_id)
             self._state.save_asset_import(album_id, asset_id, None, "skipped_deleted_asset")
             return "skipped"
 
@@ -202,7 +223,7 @@ class AlbumImporter:
             if imported_elsewhere and imported_elsewhere.target_relpath:
                 existing_path = self._config.paths.target_root / imported_elsewhere.target_relpath
                 if existing_path.exists() and imported_elsewhere.album_id != album_id:
-                    logger.info(
+                    self._log.info(
                         "Skipping asset %s for album %s because it was already imported for album %s",
                         asset_id,
                         album_id,
@@ -227,12 +248,12 @@ class AlbumImporter:
         )
 
         if target_path is None:
-            logger.info("Skipping asset %s due to collision policy", asset_id)
+            self._log.info("Skipping asset %s due to collision policy", asset_id)
             self._state.save_asset_import(album_id, asset_id, None, "skipped_conflict")
             return "conflict"
 
         if self._config.behavior.dry_run:
-            logger.info("Dry-run import %s -> %s", asset_id, target_path)
+            self._log.info("Dry-run import %s -> %s", asset_id, target_path)
             return "imported"
 
         final_relpath = str(target_path.relative_to(self._config.paths.target_root))
@@ -240,7 +261,7 @@ class AlbumImporter:
             self._download_to_target(asset_id, target_path, asset_date)
         except httpx.HTTPStatusError as error:
             status_code = error.response.status_code
-            logger.warning(
+            self._log.warning(
                 "Skipping asset %s because Immich returned HTTP %s while downloading original",
                 asset_id,
                 status_code,
@@ -248,12 +269,12 @@ class AlbumImporter:
             self._state.save_asset_import(album_id, asset_id, None, f"skipped_download_http_{status_code}")
             return "skipped"
         except httpx.HTTPError as error:
-            logger.warning("Skipping asset %s because download request failed: %s", asset_id, error)
+            self._log.warning("Skipping asset %s because download request failed: %s", asset_id, error)
             self._state.save_asset_import(album_id, asset_id, None, "skipped_download_error")
             return "skipped"
 
         self._state.save_asset_import(album_id, asset_id, final_relpath, "imported")
-        logger.info("Imported asset %s -> %s", asset_id, target_path)
+        self._log.info("Imported asset %s -> %s", asset_id, target_path)
         return "imported"
 
     def _is_deleted_or_trashed_asset(self, asset: dict[str, Any]) -> bool:
@@ -326,7 +347,6 @@ class AlbumImporter:
                 timestamp = asset_date.timestamp()
                 temporary_path.touch(exist_ok=True)
                 temporary_path.chmod(0o644)
-                import os
                 os.utime(temporary_path, (timestamp, timestamp))
 
             if self._config.behavior.collision_policy == "overwrite":
@@ -357,7 +377,62 @@ def build_importer(config: AppConfig) -> tuple[AlbumImporter, ImmichClient, Stat
         access_token=config.immich.access_token,
         timeout=config.immich.request_timeout_seconds,
     )
-    state = StateStore(config.paths.state_db_path)
+    state = StateStore(config.paths.state_db_path, profile=config.profile)
     renderer = TemplateRenderer(config.templates.folder, config.templates.filename)
     importer = AlbumImporter(config, client, state, renderer)
     return importer, client, state
+
+
+class SyncRunner:
+    """Runs one importer per user, sequentially, on a shared schedule.
+
+    A failure for one user is logged and reported, but never stops the others.
+    """
+
+    def __init__(self, importers: list[AlbumImporter], poll: PollConfig, resources: list[Any] | None = None) -> None:
+        self._importers = importers
+        self._poll = poll
+        self._resources = resources or []
+
+    def run_once(self) -> bool:
+        succeeded = True
+        for importer in self._importers:
+            try:
+                summary = importer.run_once()
+            except Exception as error:  # noqa: BLE001 - isolate users from each other
+                succeeded = False
+                label = f"user {importer.name!r}" if importer.name else "sync"
+                logger.exception("Sync failed for %s: %s", label, _describe_error(error))
+                continue
+            succeeded = succeeded and summary.succeeded
+        return succeeded
+
+    def run_forever(self) -> None:
+        while True:
+            self.run_once()
+            sleep_seconds = poll_delay_seconds(self._poll)
+            logger.info("Next sync in %.1f seconds", sleep_seconds)
+            time.sleep(sleep_seconds)
+
+    def close(self) -> None:
+        for resource in self._resources:
+            resource.close()
+
+
+def build_runner(configs: list[AppConfig]) -> SyncRunner:
+    if not configs:
+        raise ValueError("At least one configuration is required")
+
+    importers: list[AlbumImporter] = []
+    resources: list[Any] = []
+    try:
+        for config in configs:
+            importer, client, state = build_importer(config)
+            importers.append(importer)
+            resources.extend([state, client])
+    except Exception:
+        for resource in resources:
+            resource.close()
+        raise
+
+    return SyncRunner(importers, configs[0].poll, resources)

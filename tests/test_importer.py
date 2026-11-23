@@ -6,7 +6,7 @@ from pathlib import Path
 import httpx
 
 from immich_album_exporter.config import AppConfig, BehaviorConfig, ImmichConfig, PathsConfig, PollConfig, SelectionConfig, TemplateConfig
-from immich_album_exporter.importer import AlbumImporter
+from immich_album_exporter.importer import AlbumImporter, SyncRunner
 from immich_album_exporter.state import StateStore
 from immich_album_exporter.template import TemplateRenderer
 
@@ -487,3 +487,63 @@ def test_importer_processes_hash_album_when_ignored_patterns_empty(tmp_path: Pat
     assert (tmp_path / "target" / "2026" / "2026-01-24 #Private" / "20260124_091504.jpg").exists()
 
     state.close()
+
+
+def _named_importer(tmp_path: Path, name: str, client: FakeImmichClient) -> tuple[AlbumImporter, StateStore]:
+    config = build_config(tmp_path)
+    config.name = name
+    config.paths = PathsConfig(target_root=tmp_path / "target" / name, state_db_path=tmp_path / "state.db")
+    state = StateStore(config.paths.state_db_path, profile=name)
+    importer = AlbumImporter(config, client, state, TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename))
+    return importer, state
+
+
+def test_runner_exports_shared_album_completely_for_each_user(tmp_path: Path) -> None:
+    album = {
+        "id": "album-1",
+        "albumName": "Shared",
+        "createdAt": "2026-01-24T09:15:04Z",
+        "assets": [{"id": "asset-1", "originalFileName": "a.jpg", "fileCreatedAt": "2026-01-24T09:15:04Z"}],
+    }
+    client = FakeImmichClient(albums=[album], album_details={"album-1": album}, downloads={"asset-1": b"x"})
+    alice, alice_state = _named_importer(tmp_path, "alice", client)
+    bob, bob_state = _named_importer(tmp_path, "bob", client)
+
+    runner = SyncRunner([alice, bob], PollConfig(interval_seconds=60), [alice_state, bob_state])
+
+    assert runner.run_once() is True
+    for name in ("alice", "bob"):
+        files = list((tmp_path / "target" / name).rglob("*.jpg"))
+        assert len(files) == 1
+        assert files[0].read_bytes() == b"x"
+
+    # Second run is idempotent per user.
+    assert runner.run_once() is True
+    assert len(list((tmp_path / "target").rglob("*.jpg"))) == 2
+
+    runner.close()
+
+
+class _ExplodingClient(FakeImmichClient):
+    def list_albums(self, mode: str) -> list[dict]:
+        request = httpx.Request("GET", "http://unused/albums")
+        raise httpx.HTTPStatusError("denied", request=request, response=httpx.Response(401, request=request))
+
+
+def test_runner_isolates_failing_user(tmp_path: Path) -> None:
+    album = {
+        "id": "album-1",
+        "albumName": "Mine",
+        "createdAt": "2026-01-24T09:15:04Z",
+        "assets": [{"id": "asset-1", "originalFileName": "a.jpg", "fileCreatedAt": "2026-01-24T09:15:04Z"}],
+    }
+    good_client = FakeImmichClient(albums=[album], album_details={"album-1": album}, downloads={"asset-1": b"x"})
+    broken, broken_state = _named_importer(tmp_path, "broken", _ExplodingClient([], {}, {}))
+    good, good_state = _named_importer(tmp_path, "good", good_client)
+
+    runner = SyncRunner([broken, good], PollConfig(interval_seconds=60), [broken_state, good_state])
+
+    assert runner.run_once() is False
+    assert len(list((tmp_path / "target" / "good").rglob("*.jpg"))) == 1
+
+    runner.close()

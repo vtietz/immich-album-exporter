@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from immich_album_exporter.config import load_config
+from immich_album_exporter.config import load_config, load_configs
 
 
 def _write_config(tmp_path: Path, content: str) -> Path:
@@ -133,4 +133,129 @@ behavior:
     config_path = _write_config(tmp_path, content)
 
     with pytest.raises(ValueError, match="behavior.ignored_album_patterns"):
+        load_config(config_path)
+
+
+def _multi_user_config(users_block: str, extra: str = "") -> str:
+    return (
+        """
+immich:
+  base_url: http://immich-server:2283/api
+  api_key: ""
+
+paths:
+  target_root: /target
+  state_db_path: /data/importer.db
+
+behavior:
+  collision_policy: append
+"""
+        + extra
+        + "\nusers:\n"
+        + users_block
+    )
+
+
+def test_load_configs_without_users_returns_single_unnamed_config(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path, _minimal_immich_block())
+
+    configs = load_configs(config_path)
+
+    assert len(configs) == 1
+    assert configs[0].name is None
+    assert configs[0].profile == "default"
+    assert configs[0].paths.target_root == Path("/target")
+
+
+def test_load_configs_merges_user_overrides_over_top_level(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOB_KEY", "bob-secret")
+    users = """
+  - name: alice
+    immich:
+      api_key: alice-secret
+  - name: bob
+    immich:
+      api_key: ${BOB_KEY}
+    selection:
+      mode: owned
+    paths:
+      target_root: /exports/bob
+    behavior:
+      collision_policy: skip
+"""
+    config_path = _write_config(tmp_path, _multi_user_config(users))
+
+    alice, bob = load_configs(config_path)
+
+    assert alice.name == "alice"
+    assert alice.immich.api_key == "alice-secret"
+    assert alice.immich.base_url == "http://immich-server:2283/api"
+    assert alice.paths.target_root == Path("/target/alice")
+    assert alice.paths.state_db_path == Path("/data/importer.db")
+    assert alice.selection.mode == "owned_or_shared"
+    assert alice.behavior.collision_policy == "append"
+
+    assert bob.immich.api_key == "bob-secret"
+    assert bob.selection.mode == "owned"
+    assert bob.paths.target_root == Path("/exports/bob")
+    assert bob.paths.state_db_path == Path("/data/importer.db")
+    assert bob.behavior.collision_policy == "skip"
+    assert bob.behavior.ignored_album_patterns == ["#*"]
+
+
+def test_load_configs_shares_top_level_poll_settings(tmp_path: Path) -> None:
+    users = """
+  - name: alice
+    immich: { api_key: a }
+"""
+    extra = """
+poll:
+  interval_seconds: null
+  cron: "*/5 * * * *"
+"""
+    config_path = _write_config(tmp_path, _multi_user_config(users, extra))
+
+    (alice,) = load_configs(config_path)
+
+    assert alice.poll.cron == "*/5 * * * *"
+
+
+@pytest.mark.parametrize(
+    ("users", "message"),
+    [
+        ("  - immich: { api_key: a }\n", "users\\[0\\].name"),
+        ("  - name: 'bad name'\n    immich: { api_key: a }\n", "users\\[0\\].name"),
+        ("  - name: a\n    immich: { api_key: x }\n  - name: a\n    immich: { api_key: y }\n", "Duplicate user name"),
+        ("  - name: a\n    immich: { api_key: x }\n    poll: { interval_seconds: 5 }\n", "Invalid keys for user 'a': poll"),
+        ("  - name: a\n", "user 'a'.*api_key"),
+        (
+            "  - name: a\n    immich: { api_key: x }\n    paths: { target_root: /target/shared }\n"
+            "  - name: b\n    immich: { api_key: y }\n    paths: { target_root: /target/shared }\n",
+            "overlapping paths.target_root",
+        ),
+        (
+            "  - name: a\n    immich: { api_key: x }\n    paths: { target_root: /target }\n"
+            "  - name: b\n    immich: { api_key: y }\n",
+            "overlapping paths.target_root",
+        ),
+    ],
+)
+def test_load_configs_rejects_invalid_users(tmp_path: Path, users: str, message: str) -> None:
+    config_path = _write_config(tmp_path, _multi_user_config(users))
+
+    with pytest.raises(ValueError, match=message):
+        load_configs(config_path)
+
+
+def test_load_configs_rejects_empty_users_list(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path, _minimal_immich_block() + "\nusers: []\n")
+
+    with pytest.raises(ValueError, match="non-empty list"):
+        load_configs(config_path)
+
+
+def test_load_config_refuses_multi_user_file(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path, _multi_user_config("  - name: a\n    immich: { api_key: x }\n"))
+
+    with pytest.raises(ValueError, match="load_configs"):
         load_config(config_path)

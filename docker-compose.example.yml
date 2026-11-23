@@ -11,6 +11,9 @@ services:
       IMMICH_ACCESS_TOKEN: ${IMMICH_ACCESS_TOKEN:-}
       IMMICH_SELECTION_USER_ID: ${IMMICH_SELECTION_USER_ID:-}
       IMMICH_SELECTION_START_DATE: ${IMMICH_SELECTION_START_DATE:-}
+      # Multi-user mode: pass each user's key referenced from config.yml, e.g.
+      # IMMICH_API_KEY_ALICE: ${IMMICH_API_KEY_ALICE:-}
+      # IMMICH_API_KEY_BOB: ${IMMICH_API_KEY_BOB:-}
     command: ["worker", "--config", "/config/config.yml"]
     volumes:
       - ${IMMICH_EXPORTER_CONFIG_DIR:-./config}:/config:ro

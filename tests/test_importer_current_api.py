@@ -16,7 +16,7 @@ from fake_immich_server import FakeAlbum, FakeAsset, FakeImmichServer
 from immich_album_exporter import __main__ as cli
 from immich_album_exporter.config import AppConfig, BehaviorConfig, ImmichConfig, PathsConfig, PollConfig, SelectionConfig, TemplateConfig
 from immich_album_exporter.immich_client import ImmichClient
-from immich_album_exporter.importer import AlbumImporter, SyncSummary
+from immich_album_exporter.importer import AlbumImporter, SyncRunner, SyncSummary
 from immich_album_exporter.state import StateStore
 from immich_album_exporter.template import TemplateRenderer
 
@@ -236,31 +236,26 @@ def test_existing_state_and_frozen_directory_are_reused_after_upgrade(tmp_path: 
     assert all(p.parent == target for p in exported_files(tmp_path))
 
 
-def test_sync_once_exits_non_zero_when_an_album_failed(monkeypatch) -> None:
+def _stub_runner(monkeypatch, summary: SyncSummary) -> None:
     class StubImporter:
+        name = None
+
         def run_once(self) -> SyncSummary:
-            return SyncSummary(albums_failed=1)
+            return summary
 
-    class Closable:
-        def close(self) -> None:
-            pass
+    monkeypatch.setattr(cli, "load_configs", lambda path: [object()])
+    monkeypatch.setattr(
+        cli, "build_runner", lambda configs: SyncRunner([StubImporter()], PollConfig(interval_seconds=60))
+    )
 
-    monkeypatch.setattr(cli, "load_config", lambda path: object())
-    monkeypatch.setattr(cli, "build_importer", lambda config: (StubImporter(), Closable(), Closable()))
+
+def test_sync_once_exits_non_zero_when_an_album_failed(monkeypatch) -> None:
+    _stub_runner(monkeypatch, SyncSummary(albums_failed=1))
 
     assert cli.main(["sync-once", "--config", "unused.yml"]) == 1
 
 
 def test_sync_once_exits_zero_on_success(monkeypatch) -> None:
-    class StubImporter:
-        def run_once(self) -> SyncSummary:
-            return SyncSummary()
-
-    class Closable:
-        def close(self) -> None:
-            pass
-
-    monkeypatch.setattr(cli, "load_config", lambda path: object())
-    monkeypatch.setattr(cli, "build_importer", lambda config: (StubImporter(), Closable(), Closable()))
+    _stub_runner(monkeypatch, SyncSummary())
 
     assert cli.main(["sync-once", "--config", "unused.yml"]) == 0

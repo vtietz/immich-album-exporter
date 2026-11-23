@@ -32,3 +32,17 @@ behavior:
   ignored_album_patterns:
     - "#*"
   dry_run: false
+
+# Multi-user mode (optional): export for several Immich users from one container.
+# The sections above become shared defaults; each user overrides what differs.
+# Each user writes to <paths.target_root>/<name> unless paths.target_root is set.
+# poll is shared. See docs/CONFIGURATION.MD#users.
+# users:
+#   - name: alice
+#     immich:
+#       api_key: ${IMMICH_API_KEY_ALICE}
+#   - name: bob
+#     immich:
+#       api_key: ${IMMICH_API_KEY_BOB}
+#     selection:
+#       mode: owned

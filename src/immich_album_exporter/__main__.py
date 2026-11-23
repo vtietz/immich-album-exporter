@@ -4,8 +4,8 @@ import argparse
 import logging
 import sys
 
-from .config import load_config
-from .importer import build_importer
+from .config import load_configs
+from .importer import build_runner
 
 
 def configure_logging() -> None:
@@ -22,20 +22,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     configure_logging()
-    config = load_config(args.config)
-    importer, client, state = build_importer(config)
+    configs = load_configs(args.config)
+    runner = build_runner(configs)
 
     try:
         if args.command == "sync-once":
-            summary = importer.run_once()
-            if not summary.succeeded:
+            if not runner.run_once():
                 # Album enumeration failures must not look like a successful (empty) run.
                 return 1
         else:
-            importer.run_forever()
+            runner.run_forever()
     finally:
-        state.close()
-        client.close()
+        runner.close()
 
     return 0
 

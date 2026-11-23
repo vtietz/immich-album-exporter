@@ -344,6 +344,67 @@ Resolve export actions without writing files.
 
 Useful for validating selection and path templates before a real run.
 
+## users
+
+Optional. Exports albums for several Immich users from one container and one config file.
+
+Without `users`, the file describes a single user exactly as shown above. With `users`, the top-level sections act as shared defaults, and each entry is deep-merged on top of them:
+
+```yaml
+immich:
+  base_url: ${IMMICH_BASE_URL:http://immich-server:2283/api}
+
+paths:
+  target_root: /target
+  state_db_path: /data/importer.db
+
+poll:
+  interval_seconds: 600
+
+templates: ...
+behavior: ...
+
+users:
+  - name: alice
+    immich:
+      api_key: ${IMMICH_API_KEY_ALICE}
+  - name: bob
+    immich:
+      api_key: ${IMMICH_API_KEY_BOB}
+    selection:
+      mode: owned
+    paths:
+      target_root: /target/bob-archive
+```
+
+Rules:
+
+- `name` is required, must be unique, and may contain only letters, digits, `.`, `_` and `-`. It labels log lines (`[alice] ...`) and scopes the import state.
+- An entry may override `immich`, `selection`, `paths`, `templates` and `behavior`. Nested keys are merged and lists are replaced. Other keys, including `poll`, cause an error.
+- `poll` is always taken from the top level. All users sync one after another on every scheduled run.
+- `paths.target_root` defaults to `<top-level target_root>/<name>`, for example `/target/alice`. The target roots of two users must not be the same or nested inside each other.
+- `paths.state_db_path` is shared by default. Each user's rows are stored separately in it.
+- Every user gets a complete tree of their own. An album shared between two users is exported once for each of them, so those assets are stored twice on disk. Deduplication (`behavior.deduplication_mode`) applies only within one user.
+- If one user fails (for example because of an invalid API key), the error is logged and the other users still run. `sync-once` exits with status `1` if any user failed.
+
+Each user needs their own API key, created inside that user's Immich account, with the permissions listed under `immich.api_key`. Variables referenced as `${...}` must exist inside the container: add them to the service's `environment:` in your compose file (see the commented lines in `docker-compose.example.yml`), or write the keys into `config.yml` directly.
+
+### Switching an existing setup to `users`
+
+State recorded before multi-user support is stored under an internal `default` profile. A newly named user starts with no state and exports everything again into their own `target_root`. To keep an existing export tree without a re-export, name that user `default` and point it at the old target directory:
+
+```yaml
+paths:
+  target_root: /target
+
+users:
+  - name: default
+    immich: { api_key: ${IMMICH_API_KEY} }
+    paths: { target_root: /target }
+```
+
+Because target roots may not overlap, the other users then need target roots outside `/target`, for example `/exports/bob`.
+
 ## Environment Variable Expansion
 
 The configuration loader supports these forms:

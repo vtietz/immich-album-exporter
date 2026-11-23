@@ -6,6 +6,7 @@ Exports albums owned by or shared with a configured Immich user into a local fol
 
 - Reads albums from Immich using an API key or access token.
 - Selects albums owned by a user, shared with a user, or both.
+- Supports several Immich users from one container, each with their own API key and target tree (see [Configuration: users](docs/CONFIGURATION.MD#users)).
 - Can ignore albums created before a configured start date.
 - Exports photos and videos into a target volume using configurable folder and filename templates.
 - Preserves file timestamps on exported files based on Immich metadata.
@@ -98,6 +99,7 @@ Notes:
 - Timestamp-based filenames and preserved file timestamps follow the container timezone (`TZ`). Set `TZ` to your local zone (for example `Europe/Berlin`) to avoid hour offsets and unintended filename collisions.
 - `deduplication_mode` controls asset-ID dedupe scope: `global` (across all albums), `album` (within one album only), or `none` (disabled).
 - `ignored_album_patterns` is a list of shell-style patterns for album names to skip. Default is `[#*]`, which skips albums starting with `#`.
+- To export for several Immich users, add a `users:` list. Each entry overrides the top-level settings (at least its own `immich.api_key`) and writes to `<target_root>/<name>` by default. See [docs/CONFIGURATION.MD](docs/CONFIGURATION.MD#users).
 
 ### Create an Immich API Key
 
@@ -296,10 +298,10 @@ A single workflow, [.github/workflows/ci.yml](.github/workflows/ci.yml) (`CI`), 
 The package is published to `ghcr.io/vtietz/immich-album-exporter` with these tags:
 
 - `latest`: the current `main` branch
-- `0.2.0` / `v0.2.0`: an exact [release](https://github.com/vtietz/immich-album-exporter/releases)
-- `0.2`: the latest patch release of that minor version
+- `0.3.0` / `v0.3.0`: an exact [release](https://github.com/vtietz/immich-album-exporter/releases)
+- `0.3`: the latest patch release of that minor version
 
-For unattended setups, pin a release instead of `latest` by setting `IMMICH_ALBUM_EXPORTER_IMAGE=ghcr.io/vtietz/immich-album-exporter:0.2` in `.env`. Check the release notes before upgrading.
+For unattended setups, pin a release instead of `latest` by setting `IMMICH_ALBUM_EXPORTER_IMAGE=ghcr.io/vtietz/immich-album-exporter:0.3` in `.env`. Check the release notes before upgrading.
 
 ### Creating a release
 

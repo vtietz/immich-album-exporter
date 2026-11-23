@@ -148,12 +148,106 @@ class AppConfig:
     paths: PathsConfig = field(default_factory=PathsConfig)
     templates: TemplateConfig = field(default_factory=TemplateConfig)
     behavior: BehaviorConfig = field(default_factory=BehaviorConfig)
+    # Set only in multi-user mode; scopes state and prefixes log output.
+    name: str | None = None
+
+    @property
+    def profile(self) -> str:
+        return self.name or DEFAULT_PROFILE
 
 
-def load_config(path: str | Path) -> AppConfig:
+DEFAULT_PROFILE = "default"
+USER_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+USER_OVERRIDABLE_SECTIONS = {"immich", "selection", "paths", "templates", "behavior"}
+
+
+def load_configs(path: str | Path) -> list[AppConfig]:
+    """Load one resolved config per user.
+
+    Without a ``users`` key the file describes a single (unnamed) user, exactly as
+    before. With ``users``, every entry is deep-merged over the top-level sections.
+    """
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     expanded = _expand_env(raw)
 
+    if "users" not in expanded:
+        return [_build_app_config(expanded)]
+
+    users_raw = expanded["users"]
+    if not isinstance(users_raw, list) or not users_raw:
+        raise ValueError("Invalid users: expected a non-empty list of user entries")
+
+    base = {key: value for key, value in expanded.items() if key != "users"}
+    base_target_root = Path((base.get("paths") or {}).get("target_root", "/target"))
+
+    configs: list[AppConfig] = []
+    seen_names: set[str] = set()
+    for index, user_raw in enumerate(users_raw):
+        if not isinstance(user_raw, dict):
+            raise ValueError(f"Invalid users[{index}]: expected a mapping")
+
+        name = user_raw.get("name")
+        if not isinstance(name, str) or not USER_NAME_PATTERN.match(name):
+            raise ValueError(
+                f"Invalid users[{index}].name: {name!r}. Use letters, digits, '.', '_' or '-'"
+            )
+        if name in seen_names:
+            raise ValueError(f"Duplicate user name: {name!r}")
+        seen_names.add(name)
+
+        unknown = set(user_raw) - USER_OVERRIDABLE_SECTIONS - {"name"}
+        if unknown:
+            raise ValueError(
+                f"Invalid keys for user {name!r}: {', '.join(sorted(unknown))}. "
+                f"Allowed: {', '.join(sorted(USER_OVERRIDABLE_SECTIONS))}"
+            )
+
+        overrides = {key: value for key, value in user_raw.items() if key != "name"}
+        merged = _deep_merge(base, overrides)
+        user_paths = overrides.get("paths") or {}
+        if "target_root" not in user_paths:
+            merged.setdefault("paths", {})
+            merged["paths"] = {**(merged["paths"] or {}), "target_root": str(base_target_root / name)}
+
+        try:
+            configs.append(_build_app_config(merged, name=name))
+        except (ValueError, KeyError) as error:
+            raise ValueError(f"Invalid configuration for user {name!r}: {error}") from error
+
+    _validate_distinct_target_roots(configs)
+    return configs
+
+
+def load_config(path: str | Path) -> AppConfig:
+    """Load a single-user config. Use ``load_configs`` for files with ``users``."""
+    configs = load_configs(path)
+    if len(configs) != 1 or configs[0].name is not None:
+        raise ValueError("Configuration defines users; use load_configs()")
+    return configs[0]
+
+
+def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _validate_distinct_target_roots(configs: list[AppConfig]) -> None:
+    roots = [(config.name, Path(os.path.normpath(config.paths.target_root))) for config in configs]
+    for index, (name, root) in enumerate(roots):
+        for other_name, other_root in roots[index + 1:]:
+            if root == other_root or root in other_root.parents or other_root in root.parents:
+                raise ValueError(
+                    f"Users {name!r} and {other_name!r} have overlapping paths.target_root "
+                    f"({root} and {other_root}); each user needs a separate target directory"
+                )
+
+
+def _build_app_config(expanded: dict[str, Any], name: str | None = None) -> AppConfig:
     immich_raw = expanded.get("immich", {})
     poll_raw = expanded.get("poll", {})
     api_key = immich_raw.get("api_key") or None
@@ -210,4 +304,5 @@ def load_config(path: str | Path) -> AppConfig:
             ),
             dry_run=_as_bool(expanded.get("behavior", {}).get("dry_run"), False),
         ),
+        name=name,
     )

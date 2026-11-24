@@ -101,7 +101,9 @@ class AlbumImporter:
                 continue
 
             summary.albums_seen += 1
-            album_directory = self._resolve_album_directory(album)
+            album_directory = None
+            if self._config.templates.asset_folder is None:
+                album_directory = self._resolve_album_directory(album)
 
             for asset in assets:
                 result = self._import_asset(album, asset, album_directory)
@@ -201,7 +203,7 @@ class AlbumImporter:
         self._state.save_album_mapping(album_id, target_relpath, album_name)
         return target_relpath
 
-    def _import_asset(self, album: dict[str, Any], asset: dict[str, Any], album_directory: str) -> str:
+    def _import_asset(self, album: dict[str, Any], asset: dict[str, Any], album_directory: str | None) -> str:
         album_id = album["id"]
         asset_id = asset["id"]
 
@@ -295,7 +297,7 @@ class AlbumImporter:
         asset_id: str,
         asset: dict[str, Any],
         asset_date: datetime,
-        album_directory: str,
+        album_directory: str | None,
         original_filename: str,
         ext: str,
         record: AssetImportRecord | None,
@@ -305,7 +307,10 @@ class AlbumImporter:
             if not previous_path.exists() or record.status == "imported":
                 return previous_path
 
-        base_directory = self._config.paths.target_root / album_directory
+        directory = album_directory
+        if directory is None:
+            directory = self._renderer.render_asset_folder(asset=asset, asset_date=asset_date)
+        base_directory = self._config.paths.target_root / directory
         filename = self._renderer.render_filename(
             asset=asset,
             asset_date=asset_date,
@@ -378,7 +383,11 @@ def build_importer(config: AppConfig) -> tuple[AlbumImporter, ImmichClient, Stat
         timeout=config.immich.request_timeout_seconds,
     )
     state = StateStore(config.paths.state_db_path, profile=config.profile)
-    renderer = TemplateRenderer(config.templates.folder, config.templates.filename)
+    renderer = TemplateRenderer(
+        config.templates.folder,
+        config.templates.filename,
+        asset_folder_template=config.templates.asset_folder,
+    )
     importer = AlbumImporter(config, client, state, renderer)
     return importer, client, state
 

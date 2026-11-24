@@ -128,6 +128,7 @@ class PathsConfig:
 class TemplateConfig:
     folder: str = "{{ album_date.strftime('%Y') }}/{{ album_date.strftime('%Y-%m-%d') }} {{ album_display_title }}"
     filename: str = "{{ asset_date.strftime('%Y%m%d_%H%M%S') }}{{ collision_suffix }}{{ ext }}"
+    asset_folder: str | None = None
 
 
 @dataclass(slots=True)
@@ -291,6 +292,7 @@ def _build_app_config(expanded: dict[str, Any], name: str | None = None) -> AppC
         templates=TemplateConfig(
             folder=expanded.get("templates", {}).get("folder", TemplateConfig().folder),
             filename=expanded.get("templates", {}).get("filename", TemplateConfig().filename),
+            asset_folder=expanded.get("templates", {}).get("asset_folder"),
         ),
         behavior=BehaviorConfig(
             deduplication_mode=_parse_deduplication_mode(expanded.get("behavior", {}).get("deduplication_mode")),

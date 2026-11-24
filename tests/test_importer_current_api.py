@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 import sqlite3
+from textwrap import indent
 
 import httpx
 import pytest
@@ -22,6 +23,15 @@ from immich_album_exporter.template import TemplateRenderer
 
 
 TEMPLATES = TemplateConfig()
+YEAR_LAYOUT = """
+templates:
+  asset_folder: "{{ asset_date.strftime('%Y') }}"
+  filename: "{{ original_stem }}{{ collision_suffix }}{{ ext }}"
+
+behavior:
+  collision_policy: append
+  deduplication_mode: global
+"""
 
 
 def asset(asset_id: str, taken: str = "2026-01-24T09:15:04.000Z", **kwargs) -> FakeAsset:
@@ -83,6 +93,83 @@ def test_exif_capture_date_drives_filename_for_current_responses(tmp_path: Path)
 
     assert [p.relative_to(tmp_path / "target").as_posix() for p in exported_files(tmp_path)] == [
         "2026/2026-01-24 Trip/20260124_091504.jpg"
+    ]
+
+
+def test_year_layout_exports_each_asset_once_and_keeps_collision_paths(tmp_path: Path, httpx_mock) -> None:
+    server = FakeImmichServer()
+    first = FakeAsset("first", "IMG_0001.jpg", "2023-06-01T12:00:00Z")
+    second = FakeAsset("second", "IMG_0001.jpg", "2024-06-01T12:00:00Z")
+    collision = FakeAsset("collision", "IMG_0001.jpg", "2024-05-01T12:00:00Z")
+    server.add_album(FakeAlbum("album-a", "Several years", "user-1"), [first, second])
+    server.add_album(FakeAlbum("album-b", "Shared", "other", member_ids=["user-1"]), [second, collision])
+    httpx_mock.add_callback(server._handle, is_reusable=True)
+
+    config = tmp_path / "config.yml"
+    config.write_text(f"""\
+immich: {{ base_url: 'http://immich/api', api_key: secret }}
+paths:
+  target_root: '{tmp_path / 'exports'}'
+  state_db_path: '{tmp_path / 'state.db'}'
+users:
+  - name: vincent-year
+""" + indent(YEAR_LAYOUT, "    "), encoding="utf-8")
+    command = ["sync-once", "--config", str(config)]
+    root = tmp_path / "exports" / "vincent-year"
+    expected = {
+        "2023/IMG_0001.jpg": b"first",
+        "2024/IMG_0001.jpg": b"second",
+        "2024/IMG_0001_01.jpg": b"collision",
+    }
+
+    assert cli.main(command) == 0
+    assert {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*.jpg")} == expected
+    assert cli.main(command) == 0
+    assert {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob("*.jpg")} == expected
+    assert sorted(r.url.path for r in server.requests if r.url.path.endswith("/original")) == [
+        f"/api/assets/{asset_id}/original" for asset_id in ("collision", "first", "second")
+    ]
+    assert asset_rows(tmp_path) == [
+        ("album-a", "first", "imported"),
+        ("album-a", "second", "imported"),
+        ("album-b", "collision", "imported"),
+        ("album-b", "second", "skipped_existing_asset"),
+    ]
+    state = StateStore(tmp_path / "state.db", profile="vincent-year")
+    try:
+        assert state.get_asset_import("album-b", "collision").target_relpath == "2024/IMG_0001_01.jpg"
+        assert state.get_album_mapping("album-a") is None
+    finally:
+        state.close()
+
+
+def test_enabling_year_layout_preserves_existing_import_paths(tmp_path: Path, httpx_mock) -> None:
+    server = FakeImmichServer()
+    album = FakeAlbum("album-a", "Trip", "user-1")
+    old = asset("old", "2023-06-01T12:00:00")
+    server.add_album(album, [old])
+    httpx_mock.add_callback(server._handle, is_reusable=True)
+
+    config = tmp_path / "config.yml"
+    base = f"""\
+immich: {{ base_url: 'http://immich/api', api_key: secret }}
+paths:
+  target_root: '{tmp_path / 'target'}'
+  state_db_path: '{tmp_path / 'state.db'}'
+"""
+    config.write_text(base, encoding="utf-8")
+    command = ["sync-once", "--config", str(config)]
+    assert cli.main(command) == 0
+    (old_path,) = exported_files(tmp_path)
+
+    new = asset("new", "2024-06-01T12:00:00")
+    server.add_album(album, [new])
+    config.write_text(base + YEAR_LAYOUT, encoding="utf-8")
+    assert cli.main(command) == 0
+    assert set(exported_files(tmp_path)) == {old_path, tmp_path / "target" / "2024" / "new.jpg"}
+    assert old_path.read_bytes() == b"old"
+    assert [r.url.path for r in server.requests if r.url.path.endswith("/original")] == [
+        "/api/assets/old/original", "/api/assets/new/original"
     ]
 
 

@@ -22,6 +22,8 @@ paths:
 
 templates:
   folder: "{{ album_date.strftime('%Y') }}/{{ album_date.strftime('%Y-%m-%d') }} {{ album_display_title }}"
+  # Optional per-asset folder template that takes precedence over folder.
+  # asset_folder: "{{ asset_date.strftime('%Y') }}"
   filename: "{{ asset_date.strftime('%Y%m%d_%H%M%S') }}{{ collision_suffix }}{{ ext }}"
 
 behavior:

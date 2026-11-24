@@ -96,6 +96,7 @@ Notes:
 - `start_date` is optional. If set, only albums with `createdAt` on or after that timestamp are exported. Use `YYYY-MM-DD` or a full ISO timestamp like `2026-01-01T00:00:00Z`.
 - Polling supports either fixed seconds (`poll.interval_seconds`) or cron syntax (`poll.cron`). Configure exactly one.
 - Folder and filename templates use Jinja2.
+- To group assets from selected albums by capture year, set the optional `templates.asset_folder` on the profile. [Configuration guide](docs/CONFIGURATION.MD#templatesasset_folder)
 - Timestamp-based filenames and preserved file timestamps follow the container timezone (`TZ`). Set `TZ` to your local zone (for example `Europe/Berlin`) to avoid hour offsets and unintended filename collisions.
 - `deduplication_mode` controls asset-ID dedupe scope: `global` (across all albums), `album` (within one album only), or `none` (disabled).
 - `ignored_album_patterns` is a list of shell-style patterns for album names to skip. Default is `[#*]`, which skips albums starting with `#`.

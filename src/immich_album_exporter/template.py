@@ -42,10 +42,17 @@ def sanitize_relative_path(value: str) -> str:
 
 
 class TemplateRenderer:
-    def __init__(self, folder_template: str, filename_template: str) -> None:
+    def __init__(
+        self,
+        folder_template: str,
+        filename_template: str,
+        *,
+        asset_folder_template: str | None = None,
+    ) -> None:
         env = Environment(undefined=StrictUndefined, autoescape=False)
         self._folder_template = env.from_string(folder_template)
         self._filename_template = env.from_string(filename_template)
+        self._asset_folder_template = env.from_string(asset_folder_template) if asset_folder_template is not None else None
 
     def render_folder(self, *, album: dict[str, Any], album_date: datetime, album_title: str) -> str:
         rendered = self._folder_template.render(
@@ -55,6 +62,12 @@ class TemplateRenderer:
             album_slug=sanitize_segment(album_title),
             album_display_title=normalize_album_display_title(album_title, album_date),
         )
+        return sanitize_relative_path(rendered)
+
+    def render_asset_folder(self, *, asset: dict[str, Any], asset_date: datetime) -> str:
+        if self._asset_folder_template is None:
+            raise ValueError("templates.asset_folder is not configured")
+        rendered = self._asset_folder_template.render(asset=asset, asset_date=asset_date)
         return sanitize_relative_path(rendered)
 
     def render_filename(

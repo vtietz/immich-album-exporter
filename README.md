@@ -299,10 +299,10 @@ A single workflow, [.github/workflows/ci.yml](.github/workflows/ci.yml) (`CI`), 
 The package is published to `ghcr.io/vtietz/immich-album-exporter` with these tags:
 
 - `latest`: the current `main` branch
-- `0.3.0` / `v0.3.0`: an exact [release](https://github.com/vtietz/immich-album-exporter/releases)
-- `0.3`: the latest patch release of that minor version
+- `0.4.0` / `v0.4.0`: an exact [release](https://github.com/vtietz/immich-album-exporter/releases)
+- `0.4`: the latest patch release of that minor version
 
-For unattended setups, pin a release instead of `latest` by setting `IMMICH_ALBUM_EXPORTER_IMAGE=ghcr.io/vtietz/immich-album-exporter:0.3` in `.env`. Check the release notes before upgrading.
+For unattended setups, pin a release instead of `latest` by setting `IMMICH_ALBUM_EXPORTER_IMAGE=ghcr.io/vtietz/immich-album-exporter:0.4` in `.env`. Check the release notes before upgrading.
 
 ### Creating a release
 

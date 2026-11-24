@@ -259,3 +259,47 @@ def test_load_config_refuses_multi_user_file(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="load_configs"):
         load_config(config_path)
+
+
+def test_load_config_parses_asset_folder_template(tmp_path: Path) -> None:
+    config_path = _write_config(
+        tmp_path,
+        _minimal_immich_block() + "\ntemplates:\n  asset_folder: \"{{ asset_date.strftime('%Y') }}\"\n",
+    )
+
+    config = load_config(config_path)
+
+    assert config.templates.asset_folder == "{{ asset_date.strftime('%Y') }}"
+
+
+@pytest.mark.parametrize("value", ["", "'   '", "null", None])
+def test_load_config_treats_blank_asset_folder_as_unset(tmp_path: Path, value: str | None) -> None:
+    templates = "" if value is None else f"\ntemplates:\n  asset_folder: {value}\n"
+    config_path = _write_config(tmp_path, _minimal_immich_block() + templates)
+
+    assert load_config(config_path).templates.asset_folder is None
+
+
+def test_load_config_rejects_non_string_asset_folder(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path, _minimal_immich_block() + "\ntemplates:\n  asset_folder: [2024]\n")
+
+    with pytest.raises(ValueError, match="templates.asset_folder"):
+        load_config(config_path)
+
+
+def test_load_configs_lets_user_disable_top_level_asset_folder(tmp_path: Path) -> None:
+    users = """
+  - name: alice
+    immich: { api_key: alice-secret }
+  - name: bob
+    immich: { api_key: bob-secret }
+    templates:
+      asset_folder: null
+"""
+    extra = 'templates:\n  asset_folder: "{{ asset_date.year }}"\n'
+    config_path = _write_config(tmp_path, _multi_user_config(users, extra))
+
+    alice, bob = load_configs(config_path)
+
+    assert alice.templates.asset_folder == "{{ asset_date.year }}"
+    assert bob.templates.asset_folder is None

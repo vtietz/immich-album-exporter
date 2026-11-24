@@ -257,7 +257,19 @@ Default behavior example:
 
 ### `templates.asset_folder`
 
-Optional template for the relative destination folder of each asset in the selected albums. It receives `asset` (the full asset object) and the same resolved `asset_date` as `templates.filename`. When set, it takes precedence over `templates.folder` and bypasses the frozen album directory mapping. Omit it to use the existing album layout.
+Optional template for the relative destination folder of each asset in the selected albums. When set, it takes precedence over `templates.folder` and bypasses the frozen album directory mapping. Omit it (or leave it empty) to use the existing album layout.
+
+- Required: no
+- Type: string
+- Default: unset
+
+Available variables:
+
+- `asset`: full asset object from Immich
+- `asset_date`: the same resolved asset timestamp as in `templates.filename`
+- `album`, `album_date`, `album_title`, `album_slug`, `album_display_title`: the same album variables as in `templates.folder`
+
+The template is rendered for every asset, and not every asset has every metadata field. If rendering fails for an asset, for example because it references a missing field like `asset.exifInfo.city`, that asset is skipped with a warning and recorded as `skipped_template_error`; the rest of the sync continues. Use a Jinja default to avoid gaps: `{{ asset.exifInfo.city | default('Unknown') }}`. The same applies to `templates.filename`.
 
 To organize assets by capture year and use their original filenames with the exporter's normalized extensions, configure the following settings on the profile.
 
@@ -271,7 +283,16 @@ behavior:
   deduplication_mode: global
 ```
 
-For example, one album can export to both `2023/IMG_0001.jpg` and `2024/IMG_0002.jpg`. With global deduplication, an asset appearing in multiple selected albums is exported once per profile. When you enable this setting on an existing profile with deduplication enabled, previously exported files stay at their recorded paths. Use a new profile and an empty target directory to build a year-only tree from scratch.
+For example, one album can export to both `2023/IMG_0001.jpg` and `2024/IMG_0002.jpg`. With global deduplication, an asset appearing in multiple selected albums is exported once per profile. With `deduplication_mode: album`, the same asset in two albums lands in the same year folder twice (`IMG_0001.jpg` and `IMG_0001_01.jpg` under `append`), so prefer `global` for album-independent layouts.
+
+To keep albums but group them by capture year, combine both kinds of variables:
+
+```yaml
+templates:
+  asset_folder: "{{ asset_date.strftime('%Y') }}/{{ album_display_title }}"
+```
+
+Folders rendered this way follow album renames for newly exported assets, because the frozen album mapping is not used. When you enable this setting on an existing profile with deduplication enabled, previously exported files stay at their recorded paths. Use a new profile and an empty target directory to build a year-only tree from scratch.
 
 ### `templates.filename`
 
@@ -316,7 +337,9 @@ Keep the first resolved album folder even if the album is later renamed in Immic
 - Type: boolean
 - Default: `true`
 
-Applies to `templates.folder` when `templates.asset_folder` is omitted.
+This is what prevents album renames from reshuffling already-exported folders.
+
+Applies to `templates.folder` only; it has no effect when `templates.asset_folder` is set.
 
 ### `behavior.preserve_file_timestamps`
 

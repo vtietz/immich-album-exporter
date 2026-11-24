@@ -6,11 +6,15 @@ import re
 import unicodedata
 from typing import Any
 
-from jinja2 import Environment, StrictUndefined
+from jinja2 import Environment, StrictUndefined, TemplateError
 
 
 INVALID_SEGMENT_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 WHITESPACE = re.compile(r"\s+")
+
+
+class TemplateRenderError(ValueError):
+    """A per-asset template could not be rendered into a usable path."""
 
 
 def normalize_album_display_title(album_title: str, album_date: datetime) -> str:
@@ -64,11 +68,30 @@ class TemplateRenderer:
         )
         return sanitize_relative_path(rendered)
 
-    def render_asset_folder(self, *, asset: dict[str, Any], asset_date: datetime) -> str:
+    def render_asset_folder(
+        self,
+        *,
+        asset: dict[str, Any],
+        asset_date: datetime,
+        album: dict[str, Any],
+        album_date: datetime,
+        album_title: str,
+    ) -> str:
         if self._asset_folder_template is None:
             raise ValueError("templates.asset_folder is not configured")
-        rendered = self._asset_folder_template.render(asset=asset, asset_date=asset_date)
-        return sanitize_relative_path(rendered)
+        try:
+            rendered = self._asset_folder_template.render(
+                asset=asset,
+                asset_date=asset_date,
+                album=album,
+                album_date=album_date,
+                album_title=album_title,
+                album_slug=sanitize_segment(album_title),
+                album_display_title=normalize_album_display_title(album_title, album_date),
+            )
+            return sanitize_relative_path(rendered)
+        except (TemplateError, ValueError) as error:
+            raise TemplateRenderError(f"templates.asset_folder: {error}") from error
 
     def render_filename(
         self,
@@ -79,12 +102,15 @@ class TemplateRenderer:
         ext: str,
         collision_suffix: str,
     ) -> str:
-        rendered = self._filename_template.render(
-            asset=asset,
-            asset_date=asset_date,
-            collision_suffix=collision_suffix,
-            ext=ext,
-            original_filename=original_filename,
-            original_stem=Path(original_filename).stem,
-        )
+        try:
+            rendered = self._filename_template.render(
+                asset=asset,
+                asset_date=asset_date,
+                collision_suffix=collision_suffix,
+                ext=ext,
+                original_filename=original_filename,
+                original_stem=Path(original_filename).stem,
+            )
+        except TemplateError as error:
+            raise TemplateRenderError(f"templates.filename: {error}") from error
         return sanitize_segment(rendered)

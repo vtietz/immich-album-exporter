@@ -76,6 +76,15 @@ def _parse_string_list(value: Any, field_name: str, default: list[str] | None = 
     raise ValueError(f"Invalid {field_name}: expected a list of strings")
 
 
+def _parse_optional_template(value: Any, field_name: str) -> str | None:
+    """Treat a missing, null or blank template as "not configured"."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"Invalid {field_name}: expected a string")
+    return value if value.strip() else None
+
+
 @dataclass(slots=True)
 class ImmichConfig:
     base_url: str
@@ -292,7 +301,10 @@ def _build_app_config(expanded: dict[str, Any], name: str | None = None) -> AppC
         templates=TemplateConfig(
             folder=expanded.get("templates", {}).get("folder", TemplateConfig().folder),
             filename=expanded.get("templates", {}).get("filename", TemplateConfig().filename),
-            asset_folder=expanded.get("templates", {}).get("asset_folder"),
+            asset_folder=_parse_optional_template(
+                expanded.get("templates", {}).get("asset_folder"),
+                "templates.asset_folder",
+            ),
         ),
         behavior=BehaviorConfig(
             deduplication_mode=_parse_deduplication_mode(expanded.get("behavior", {}).get("deduplication_mode")),

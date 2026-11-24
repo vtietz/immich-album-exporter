@@ -173,6 +173,34 @@ paths:
     ]
 
 
+def test_asset_folder_template_error_skips_only_that_asset(tmp_path: Path) -> None:
+    server = FakeImmichServer(legacy=False)
+    server.add_album(
+        FakeAlbum("album-a", "2026-01-24 Trip", "user-1"),
+        [asset("good", "2023-06-01T12:00:00Z"), asset("bad", "2024-06-01T12:00:00Z")],
+    )
+    # Only 2023 is mapped; rendering a 2024 asset hits StrictUndefined.
+    template = "{{ album_display_title }}/{{ {'2023': 'Early'}[asset_date.strftime('%Y')] }}"
+    config = build_config(tmp_path)
+    config.templates = TemplateConfig(asset_folder=template)
+    client = ImmichClient("http://immich/api", api_key="secret", transport=server.transport())
+    state = StateStore(config.paths.state_db_path)
+    renderer = TemplateRenderer(TEMPLATES.folder, TEMPLATES.filename, asset_folder_template=template)
+    try:
+        summary = AlbumImporter(config, client, state, renderer).run_once()
+    finally:
+        state.close()
+        client.close()
+
+    assert summary.succeeded
+    assert (summary.assets_imported, summary.assets_skipped) == (1, 1)
+    assert exported_files(tmp_path) == [tmp_path / "target" / "Trip" / "Early" / "20230601_120000.jpg"]
+    assert asset_rows(tmp_path) == [
+        ("album-a", "bad", "skipped_template_error"),
+        ("album-a", "good", "imported"),
+    ]
+
+
 def test_genuinely_empty_current_album_succeeds_without_imports(tmp_path: Path) -> None:
     server = FakeImmichServer(legacy=False)
     server.add_album(FakeAlbum(id="album-1", name="Empty", owner_id="user-1"), [])

@@ -17,7 +17,7 @@ from .config import AppConfig, PollConfig
 from .immich_client import AlbumEnumerationError, AlbumIdentityError, ImmichClient, album_member_ids, album_owner_id
 from .metadata import parse_datetime, resolve_album_date, resolve_asset_date, resolve_extension, resolve_original_filename
 from .state import AssetImportRecord, StateStore
-from .template import TemplateRenderer
+from .template import TemplateRenderError, TemplateRenderer
 
 
 logger = logging.getLogger(__name__)
@@ -238,16 +238,21 @@ class AlbumImporter:
         original_filename = resolve_original_filename(asset)
         ext = resolve_extension(asset)
 
-        target_path = self._resolve_target_path(
-            album_id=album_id,
-            asset_id=asset_id,
-            asset=asset,
-            asset_date=asset_date,
-            album_directory=album_directory,
-            original_filename=original_filename,
-            ext=ext,
-            record=record,
-        )
+        try:
+            target_path = self._resolve_target_path(
+                album=album,
+                asset_id=asset_id,
+                asset=asset,
+                asset_date=asset_date,
+                album_directory=album_directory,
+                original_filename=original_filename,
+                ext=ext,
+                record=record,
+            )
+        except TemplateRenderError as error:
+            self._log.warning("Skipping asset %s in album %s because a template failed: %s", asset_id, album_id, error)
+            self._state.save_asset_import(album_id, asset_id, None, "skipped_template_error")
+            return "skipped"
 
         if target_path is None:
             self._log.info("Skipping asset %s due to collision policy", asset_id)
@@ -293,7 +298,7 @@ class AlbumImporter:
     def _resolve_target_path(
         self,
         *,
-        album_id: str,
+        album: dict[str, Any],
         asset_id: str,
         asset: dict[str, Any],
         asset_date: datetime,
@@ -302,6 +307,7 @@ class AlbumImporter:
         ext: str,
         record: AssetImportRecord | None,
     ) -> Path | None:
+        album_id = album["id"]
         if record and record.target_relpath:
             previous_path = self._config.paths.target_root / record.target_relpath
             if not previous_path.exists() or record.status == "imported":
@@ -309,7 +315,13 @@ class AlbumImporter:
 
         directory = album_directory
         if directory is None:
-            directory = self._renderer.render_asset_folder(asset=asset, asset_date=asset_date)
+            directory = self._renderer.render_asset_folder(
+                asset=asset,
+                asset_date=asset_date,
+                album=album,
+                album_date=resolve_album_date(album),
+                album_title=album.get("albumName") or album.get("name") or album_id,
+            )
         base_directory = self._config.paths.target_root / directory
         filename = self._renderer.render_filename(
             asset=asset,
